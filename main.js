@@ -552,7 +552,31 @@ async function searchMusic(query, limit = 20) {
   }
 }
 
+// ---------- Search autocomplete (YouTube-style suggestions) ----------
+const searchSuggestionCache = new Map();
+async function searchSuggestions(query) {
+  const q = String(query || '').replace(/\s+/g, ' ').trim();
+  if (q.length < 2) return [];
+  const key = q.toLowerCase();
+  const cached = searchSuggestionCache.get(key);
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.items;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4500);
+  try {
+    const url = `https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`;
+    const response = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 DEEP-ECHO/2.2.0' } });
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const items = Array.isArray(payload?.[1]) ? payload[1].filter(x => typeof x === 'string').map(x => x.trim()).filter(Boolean).slice(0, 10) : [];
+    searchSuggestionCache.set(key, { at: Date.now(), items });
+    if (searchSuggestionCache.size > 120) searchSuggestionCache.delete(searchSuggestionCache.keys().next().value);
+    return items;
+  } catch (_) { return []; }
+  finally { clearTimeout(timer); }
+}
+
 // ---------- IPC: search ----------
+ipcMain.handle('search-suggestions', async (_event, query) => searchSuggestions(query));
 ipcMain.handle('search-music', async (_event, query) => searchMusic(query, 20));
 
 // ---------- IPC: artist search ----------

@@ -1,7 +1,7 @@
 {
   "name": "deepeccho",
-  "version": "2.1.2",
-  "description": "DEEP-ECHO 2.1.2 - auto-update foundation with cloud-safe renderer checks",
+  "version": "2.2.0",
+  "description": "DEEP-ECHO 2.2.0 - Home 2.0, personalized discovery and YouTube-style search suggestions",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",

@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('echoAPI', {
   v200: (action, value) => { const allowed=['downloads','cancel-download','quality','storage','repair','update-check','update-download','update-install','backup','about']; if(!allowed.includes(action))return Promise.reject(new Error('Unknown action')); return ipcRenderer.invoke('v200-'+action,value); },
   search: (query) => ipcRenderer.invoke('search-music', query),
+  searchSuggestions: (query) => ipcRenderer.invoke('search-suggestions', query),
   searchArtist: (query) => ipcRenderer.invoke('search-artist', query),
   getHomeFeed: () => ipcRenderer.invoke('get-home-feed'),
   getLibrary: () => ipcRenderer.invoke('get-library'),
