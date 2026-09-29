@@ -8,7 +8,7 @@ const js=fs.readFileSync('src/renderer.js','utf8');
 const css=fs.readFileSync('src/style.css','utf8');
 
 test('v1.4.12 keeps the visualizer engine intact but moves its stage upward',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(css,/top: calc\(50vh - 392px\)/);
   assert.match(js,/function drawLyricsVisualizer/);
   assert.match(js,/audioAnalyser\.getByteFrequencyData/);

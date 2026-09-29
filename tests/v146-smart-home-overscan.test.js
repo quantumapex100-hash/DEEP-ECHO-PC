@@ -7,7 +7,7 @@ const html=fs.readFileSync('src/index.html','utf8');
 const pkg=require('../package.json');
 
 test('v1.4.6 uses an overscan visualizer stage and clamps reactive geometry inside safe bounds',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(css,/width: min\(760px, 72vw\)/);
   assert.match(js,/compactLyricsSurface = targetCanvas === lyricsVisualizerCanvas/);
   assert.match(js,/safeOuterRadius = Math\.max\(90\*dpr, Math\.min\(w,h\)\*\.465\)/);

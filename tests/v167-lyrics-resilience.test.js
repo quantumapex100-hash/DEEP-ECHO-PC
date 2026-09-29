@@ -9,7 +9,7 @@ const main=fs.readFileSync('main.js','utf8');
 const {collapseCaptionLines,alignSyncedLyricsToCaptions}=require('../lib/youtube-captions');
 
 test('v1.6.7 keeps legitimate repeated lyric lines while collapsing near duplicate caption emits',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   const rows=collapseCaptionLines([
     {time:1.00,text:'I need you'},
     {time:1.25,text:'I need you'}, // duplicate auto-caption emit

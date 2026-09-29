@@ -12,7 +12,7 @@ const js = fs.readFileSync('src/renderer.js','utf8');
 const html = fs.readFileSync('src/index.html','utf8');
 
 test('v1.4.9 adds smart local AI lyrics fallback without trusting catalogue instrumental flags',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.equal(pkg.dependencies['whisper-cpp-node'],'0.2.12');
   assert.equal(pkg.dependencies['ffmpeg-static'],'5.3.0');
   assert.match(main,/transcribeSong/);

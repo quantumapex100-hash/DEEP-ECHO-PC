@@ -12,7 +12,7 @@ const floatingHtml = fs.readFileSync('src/floating-lyrics.html', 'utf8');
 const main = fs.readFileSync('main.js', 'utf8');
 
 test('v1.6.10 preserves legitimate short prefix lyrics instead of treating them as growing auto-captions', () => {
-  assert.equal(pkg.version, '2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   const rows = normalizeTimeline([
     { time: 10.0, text: 'when you go' },
     { time: 11.0, text: 'when you go home' },

@@ -4,9 +4,9 @@ const fs=require('fs');
 const path=require('path');
 const root=path.resolve(__dirname,'..');
 
-test('2.1.0 is wired to public GitHub releases without changing app identity',()=>{
+test('2.x is wired to public GitHub releases without changing app identity',()=>{
   const pkg=require('../package.json');
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.equal(pkg.build.appId,'com.dinecho.app');
   assert.equal(pkg.build.productName,'DEEP-ECHO');
   assert.equal(pkg.dependencies['electron-updater'],'6.6.2');

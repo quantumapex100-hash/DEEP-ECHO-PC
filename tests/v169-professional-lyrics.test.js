@@ -10,7 +10,7 @@ const floatingCss=fs.readFileSync('src/floating-lyrics.css','utf8');
 const tools=fs.readFileSync('src/v150-tools.js','utf8');
 
 test('v1.6.9 adds presentation-only audio-reactive lyric bridge without timing ownership',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(index,/v169-pro-lyrics\.css/);
   assert.match(index,/v169-lyrics-presentation\.js/);
   assert.match(bridge,/window\.__dinechoAudioEnergy/);

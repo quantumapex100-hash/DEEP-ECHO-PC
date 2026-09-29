@@ -13,7 +13,7 @@ function block(start,end){
 }
 
 test('v1.4.6 uses high resolution PCM plus FFT audio analysis',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(js,/audioAnalyser\.fftSize\s*=\s*2048/);
   assert.match(js,/getByteFrequencyData\(visualizerFrequencyData\)/);
   assert.match(js,/getByteTimeDomainData\(visualizerTimeData\)/);

@@ -11,7 +11,7 @@ const tools=fs.readFileSync('src/v150-tools.js','utf8');
 const main=fs.readFileSync('main.js','utf8');
 
 test('v1.6.8 keeps lyric timing separate and loads presentation-only theme layer',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(index,/v168-lyrics-visuals\.css/);
   for(const theme of ['golden','light','dark','purple','toxic','blood','silver','transparent','fluids','rgb','love','space']){
     assert.ok(css.includes(`data-theme="${theme}"`),`missing ${theme}`);

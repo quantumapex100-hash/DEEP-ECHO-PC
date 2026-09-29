@@ -9,7 +9,7 @@ const css=fs.readFileSync(path.join(root,'src','style.css'),'utf8');
 const pkg=require(path.join(root,'package.json'));
 
 test('v1.4.12 renames the visible app to DEEP-ECHO without changing the compatibility appId',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.equal(pkg.build.productName,'DEEP-ECHO');
   assert.equal(pkg.build.nsis.shortcutName,'DEEP-ECHO');
   assert.equal(pkg.build.appId,'com.dinecho.app');

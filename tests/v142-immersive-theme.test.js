@@ -9,7 +9,7 @@ const js=fs.readFileSync(path.join(root,'src/renderer.js'),'utf8');
 const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 
 test('v1.4.2 package and immersive smart layout are present',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   for(const id of ['immersiveShell','immersiveVisualizerCanvas','immersiveLyricsPanel','immersiveLyricsBody','immersiveLyricsToggleBtn']) assert.match(html,new RegExp(`id="${id}"`));
   assert.match(css,/immersive-shell\.lyrics-hidden/); assert.match(js,/function smartSetImmersiveLyricsVisible/);
 });

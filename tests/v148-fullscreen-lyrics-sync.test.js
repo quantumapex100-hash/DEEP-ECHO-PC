@@ -9,7 +9,7 @@ const pkg=require('../package.json');
 const { collapseCaptionLines, alignSyncedLyricsToCaptions }=require('../lib/youtube-captions');
 
 test('v1.4.8 exposes true app fullscreen across normal Dinecho views',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(main,/setAppFullscreen/);
   assert.doesNotMatch(main,/mainWindow\.on\('maximize'/);
   assert.match(main,/Native Windows maximize stays a normal maximized window/);

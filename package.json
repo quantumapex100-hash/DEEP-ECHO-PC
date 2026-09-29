@@ -1,14 +1,14 @@
 {
   "name": "deepeccho",
-  "version": "2.1.0",
-  "description": "DEEP-ECHO 2.1.0 - in-app auto updates and cloud release pipeline",
+  "version": "2.1.1",
+  "description": "DEEP-ECHO 2.1.1 - auto-update foundation with Windows-safe cloud tests",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win",
-    "test": "node --test tests/*.test.js && node tests/renderer-smoke.cjs",
+    "test": "node tests/run-tests.cjs",
     "dist:dir": "electron-builder --win --dir",
     "release": "electron-builder --win --publish always"
   },

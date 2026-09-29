@@ -11,7 +11,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 
 const themes = ['golden','light','dark','purple','toxic','blood','silver','transparent','fluids','rgb','love'];
 
 test('v1.4.1 keeps the in-lyrics Theme Lyrics ON/OFF toggle', () => {
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(index, /id="lyricsThemeFxToggle"/);
   assert.match(index, /id="lyricsThemeFxToggleText">ON</);
   assert.match(renderer, /lyricsThemeFx:\s*'echo-lyrics-theme-fx-v1'/);

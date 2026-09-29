@@ -13,7 +13,7 @@ const main = fs.readFileSync(path.join(root,'main.js'),'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 
 test('v1.4.1 package version and theme picker collapse are wired',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(html,/id="themeGrid"/); assert.match(html,/id="themeShowMoreBtn"/);
   assert.match(css,/theme-grid:not\(\.show-all-themes\).*nth-child\(n\+5\)/);
   assert.match(js,/function setThemeGridExpanded/); assert.match(js,/setThemeGridExpanded\(false\)/);

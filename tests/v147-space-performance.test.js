@@ -7,7 +7,7 @@ const css=fs.readFileSync('src/style.css','utf8');
 const pkg=require('../package.json');
 
 test('v1.4.8 prewarms and caches Vibrant Space instead of rebuilding its heavy blur each frame',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(fx,/function buildSpaceStaticLayer\(/);
   assert.match(fx,/spaceStaticCanvas/);
   assert.match(fx,/requestIdleCallback\(prewarmSpace/);

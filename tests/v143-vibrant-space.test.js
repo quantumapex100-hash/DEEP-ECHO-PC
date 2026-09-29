@@ -12,7 +12,7 @@ const miniJs=fs.readFileSync(path.join(root,'src/mini.js'),'utf8');
 const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 
 test('v1.4.3 adds Vibrant Space as a selectable persisted theme',()=>{
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.match(html,/data-theme-choice="space"/);assert.match(html,/Vibrant Space/);
   assert.match(js,/allowed = \[[^\]]*'space'/s);
 });

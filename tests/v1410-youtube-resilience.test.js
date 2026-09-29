@@ -8,7 +8,7 @@ const pkg = require(path.join(root, 'package.json'));
 const helper = require(path.join(root, 'lib', 'ytdlp-smart.js'));
 
 test('v1.4.10 recognizes YouTube bot checks without exposing mojibake', () => {
-  assert.equal(pkg.version,'2.1.0');
+  assert.match(pkg.version,/^2\.\d+\.\d+$/);
   assert.equal(helper.isBotChallenge(new Error("Sign in to confirm you’re not a bot")), true);
   assert.equal(helper.isBotChallenge(new Error('normal network timeout')), false);
   assert.equal(helper.cleanErrorMessage(new Error('you∩┐╜re not a bot')).includes('∩┐╜'), false);
