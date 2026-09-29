@@ -500,7 +500,7 @@
 
   // Prepare Vibrant Space while the browser is idle, so the first theme switch has no allocation spike.
   const prewarmSpace = () => { try { ensureSpaceResources(Math.max(1,innerWidth),Math.max(1,innerHeight)); } catch (_) {} };
-  if ('requestIdleCallback' in window) requestIdleCallback(prewarmSpace,{timeout:1400}); else setTimeout(prewarmSpace,450);
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(prewarmSpace,{timeout:1400}); else setTimeout(prewarmSpace,450);
 
   window.drawDinechoEffect = (ctx, canvas, theme) => {
     if (window.__deepecchoGameMode) return true;

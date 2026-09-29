@@ -1,7 +1,7 @@
 {
   "name": "deepeccho",
-  "version": "2.1.1",
-  "description": "DEEP-ECHO 2.1.1 - auto-update foundation with Windows-safe cloud tests",
+  "version": "2.1.2",
+  "description": "DEEP-ECHO 2.1.2 - auto-update foundation with cloud-safe renderer checks",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",
