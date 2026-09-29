@@ -198,12 +198,20 @@
     });
   }
   function renderSearchDiscovery() {
-    const hasQuery = !!searchInput.value.trim();
+    const query = searchInput.value.trim();
+    const hasQuery = query.length > 0;
+    const discovery = $('search220Discovery');
+    discovery?.classList.toggle('hidden', !hasQuery);
+    if (!hasQuery) {
+      $('search220QuickQueries')?.replaceChildren();
+      $('search220RecommendGrid')?.replaceChildren();
+      return;
+    }
     renderDiscoveryQueryChips();
-    const heading = $('search220Discovery')?.querySelector('.search220-discovery-head h3');
-    if (heading) heading.textContent = hasQuery ? 'Related searches' : 'Not sure what to search?';
+    const heading = discovery?.querySelector('.search220-discovery-head h3');
+    if (heading) heading.textContent = 'Related searches';
     makeCards($('search220RecommendGrid'), recommendationSongs(), 'search220-recommended', 'Search Recommendations', 6);
-    $('search220Discovery')?.classList.toggle('is-compact', hasQuery);
+    discovery?.classList.add('is-compact');
   }
 
   // ---------- YOUTUBE-LIKE AUTOCOMPLETE ----------
@@ -242,7 +250,7 @@
     $('search220Ghost')?.classList.toggle('has-completion', !!best && document.activeElement === searchInput);
   }
   function renderSuggestions(items, query) {
-    suggestionItems = uniqueText(items).slice(0, 8); selectedIndex = -1; panel?.replaceChildren();
+    suggestionItems = uniqueText(items).slice(0, 6); selectedIndex = -1; panel?.replaceChildren();
     if (String(query || '').trim() && suggestionItems.length) renderDiscoveryQueryChips(suggestionItems);
     setGhost(query, suggestionItems);
     if (!panel || !suggestionItems.length || document.activeElement !== searchInput) { panel?.classList.add('hidden'); return; }
@@ -276,17 +284,24 @@
   async function updateSuggestions() {
     const value = searchInput.value.trim(); const seq = ++suggestionSeq;
     renderSearchDiscovery();
-    if (!value) { renderSuggestions(localSuggestionPool().slice(0, 6), ''); return; }
-    const local = localSuggestionPool().filter(x => x.toLowerCase().includes(value.toLowerCase())).slice(0, 5);
+    if (value.length < 2) {
+      suggestionItems = []; setGhost(value, []); hideSuggestions();
+      return;
+    }
+    const local = localSuggestionPool().filter(x => x.toLowerCase().includes(value.toLowerCase())).slice(0, 4);
     let remote = [];
-    if (value.length >= 2 && typeof window.echoAPI?.searchSuggestions === 'function') {
+    if (typeof window.echoAPI?.searchSuggestions === 'function') {
       try { const result = await window.echoAPI.searchSuggestions(value); if (seq !== suggestionSeq) return; if (Array.isArray(result)) remote = result; } catch (_) {}
     }
     if (seq !== suggestionSeq) return;
     renderSuggestions(uniqueText([...remote, ...local]), value);
   }
-  searchInput.addEventListener('input', () => { clearTimeout(suggestionTimer); suggestionTimer = setTimeout(updateSuggestions, 180); });
-  searchInput.addEventListener('focus', () => { clearTimeout(suggestionTimer); suggestionTimer = setTimeout(updateSuggestions, 40); });
+  searchInput.addEventListener('input', () => { clearTimeout(suggestionTimer); suggestionTimer = setTimeout(updateSuggestions, 220); });
+  searchInput.addEventListener('focus', () => {
+    clearTimeout(suggestionTimer);
+    if (searchInput.value.trim().length >= 2) suggestionTimer = setTimeout(updateSuggestions, 60);
+    else hideSuggestions();
+  });
   searchInput.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown' && suggestionItems.length && !panel?.classList.contains('hidden')) { event.preventDefault(); event.stopImmediatePropagation(); selectSuggestion(selectedIndex + 1); return; }
     if (event.key === 'ArrowUp' && suggestionItems.length && !panel?.classList.contains('hidden')) { event.preventDefault(); event.stopImmediatePropagation(); selectSuggestion(selectedIndex <= 0 ? suggestionItems.length - 1 : selectedIndex - 1); return; }

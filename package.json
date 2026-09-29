@@ -1,7 +1,7 @@
 {
   "name": "deepeccho",
-  "version": "2.2.0",
-  "description": "DEEP-ECHO 2.2.0 - Home 2.0, personalized discovery and YouTube-style search suggestions",
+  "version": "2.2.1",
+  "description": "DEEP-ECHO 2.2.1 - Search UI hotfix, correct track switching and faster GitHub releases",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",

@@ -564,15 +564,23 @@ async function searchSuggestions(query) {
   const timer = setTimeout(() => controller.abort(), 4500);
   try {
     const url = `https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`;
-    const response = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 DEEP-ECHO/2.2.0' } });
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': `Mozilla/5.0 DEEP-ECHO/${app.getVersion()}` }
+    });
     if (!response.ok) return [];
     const payload = await response.json();
-    const items = Array.isArray(payload?.[1]) ? payload[1].filter(x => typeof x === 'string').map(x => x.trim()).filter(Boolean).slice(0, 10) : [];
+    const items = Array.isArray(payload?.[1])
+      ? payload[1].filter(x => typeof x === 'string').map(x => x.trim()).filter(Boolean).slice(0, 10)
+      : [];
     searchSuggestionCache.set(key, { at: Date.now(), items });
     if (searchSuggestionCache.size > 120) searchSuggestionCache.delete(searchSuggestionCache.keys().next().value);
     return items;
-  } catch (_) { return []; }
-  finally { clearTimeout(timer); }
+  } catch (_) {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ---------- IPC: search ----------

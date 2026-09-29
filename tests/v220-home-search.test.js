@@ -8,8 +8,8 @@ const css=fs.readFileSync('src/v220-home-search.css','utf8');
 const main=fs.readFileSync('main.js','utf8');
 const preload=fs.readFileSync('preload.js','utf8');
 
-test('v2.2.0 Home 2.0 assets are versioned and loaded',()=>{
-  assert.equal(pkg.version,'2.2.0');
+test('v2.2.x Home 2.0 assets are versioned and loaded',()=>{
+  assert.match(pkg.version,/^2\.2\.\d+$/);
   assert.match(html,/v220-home-search\.css/);
   assert.match(html,/v220-home-search\.js/);
   assert.match(js,/HOME 2\.0/);

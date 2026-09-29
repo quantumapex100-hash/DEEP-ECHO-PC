@@ -18,3 +18,17 @@ body[data-theme="blood"] .home220-pulse.is-playing .home220-eq i{filter:drop-sha
 @media(max-width:1040px){.home220-hero{grid-template-columns:1fr}.home220-pulse{grid-column:1;grid-row:auto;margin-top:16px}.home220-hero>.hero-label,.home220-hero>.hero-title,.home220-hero>.hero-btn{width:auto}.home220-badge{top:10px}.search220-discovery-head{align-items:flex-start;flex-direction:column}.search220-discovery-head small{display:none}}
 @media(max-width:720px){.home220-controls{align-items:flex-start;flex-direction:column}.home220-control-copy{margin-right:0}.home220-pulse{grid-template-columns:48px minmax(0,1fr);}.home220-pulse img{width:48px;height:48px}.home220-eq{display:none}.search220-suggestion-hint{display:none}.search220-suggestion{grid-template-columns:22px minmax(0,1fr)}}
 @media(prefers-reduced-motion:reduce){.home220-pulse,.home220-mood,.home220-refresh{transition:none}.home220-pulse.is-playing .home220-eq i{animation:none}}
+
+
+/* v2.2.1 Search UI hotfix: compact glass suggestions, high contrast, no empty-focus popup. */
+.search220-discovery.hidden{display:none!important}
+.search220-input-shell #searchInput{background:color-mix(in srgb,var(--panel) 74%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.search220-autocomplete{left:5px;right:5px;top:calc(100% + 7px);padding:6px;max-height:286px;border:1px solid color-mix(in srgb,var(--gold) 38%,var(--border));border-radius:13px;background:color-mix(in srgb,#090806 82%,transparent);box-shadow:0 18px 42px rgba(0,0,0,.55),inset 0 1px 0 color-mix(in srgb,var(--gold-bright) 8%,transparent);backdrop-filter:blur(24px) saturate(1.12);-webkit-backdrop-filter:blur(24px) saturate(1.12)}
+.search220-suggestion{min-height:42px;padding:8px 10px;border:1px solid transparent;border-radius:9px;color:color-mix(in srgb,var(--text) 96%,white);background:transparent}
+.search220-suggestion+.search220-suggestion{margin-top:2px}
+.search220-suggestion:hover,.search220-suggestion.active{background:color-mix(in srgb,var(--gold) 13%,#0b0a08);border-color:color-mix(in srgb,var(--gold) 24%,transparent);color:var(--gold-bright)}
+.search220-suggestion-text{font-size:12.5px;font-weight:650;color:inherit;text-shadow:0 1px 10px rgba(0,0,0,.42)}
+.search220-suggestion-hint{font-size:8.5px;font-weight:800;color:color-mix(in srgb,var(--gold-dim) 80%,var(--text-dim));opacity:.95}
+.search220-suggestion-icon{color:var(--gold-bright);opacity:.85}
+.search220-query-chip{background:color-mix(in srgb,var(--panel) 72%,transparent);color:color-mix(in srgb,var(--text) 82%,var(--gold-dim));backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.song-row.search-click-to-play{cursor:pointer}.song-row.search-click-to-play:hover .song-meta .title{color:var(--gold-bright)}

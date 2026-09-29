@@ -23,12 +23,14 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Verify release token exists
         shell: pwsh
@@ -47,8 +49,18 @@ jobs:
             throw "Tag v$tagVersion does not match package.json version $packageVersion"
           }
 
+      - name: Cache Electron build tools
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Bundle latest yt-dlp
         shell: pwsh
@@ -69,20 +81,10 @@ jobs:
       - name: Build and publish release
         run: npm run release
 
-      - name: Upload installer as workflow artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: DEEP-ECHO-Windows-${{ github.ref_name }}
-          path: |
-            dist/DEEP-ECHO-*-Setup.exe
-            dist/latest.yml
-            dist/*.blockmap
-          if-no-files-found: warn
 
       - name: Upload build logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deep-echo-build-debug
           path: |

@@ -1133,7 +1133,17 @@ function buildSongRow(song, isLibrary, contextSpec = null) {
   }
 
   row.appendChild(actions);
-  row.addEventListener('dblclick', () => startSingleSong(song, null, contextSpec));
+  const searchClickToPlay = !!contextSpec && ['search', 'artist-search'].includes(contextSpec.type);
+  if (searchClickToPlay) {
+    row.classList.add('search-click-to-play');
+    row.title = 'Click to play';
+    row.addEventListener('click', async (event) => {
+      if (event.target.closest('button')) return;
+      await startSingleSong(song, playBtn, contextSpec);
+    });
+  } else {
+    row.addEventListener('dblclick', () => startSingleSong(song, null, contextSpec));
+  }
   return row;
 }
 
@@ -1192,6 +1202,18 @@ if (window.echoAPI.onStreamProgress) window.echoAPI.onStreamProgress(progress =>
 async function playRemoteSong(song, button) {
   const requestId = ++playRequest;
   const oldContent = button && button.innerHTML;
+  const previousUi = {
+    title: nowTitle.textContent, channel: nowChannel.textContent, thumb: nowThumb.src,
+    seek: seekBar.value, current: curTime.textContent, duration: durTime.textContent,
+    wasPlaying: !!audioPlayer.src && !audioPlayer.paused
+  };
+  // A new selection owns playback immediately. Do not let the old track keep playing while
+  // yt-dlp resolves the new stream; that made a clicked search result look like the wrong song.
+  if (!audioPlayer.paused) audioPlayer.pause();
+  nowTitle.textContent = `${song.title || 'Selected song'} · Loading…`;
+  nowChannel.textContent = song.channel || '';
+  nowThumb.src = song.thumbnail || DEFAULT_THUMB;
+  seekBar.value = 0; curTime.textContent = '0:00'; durTime.textContent = song.duration || '0:00';
   loadingRequest = { id: song.id, title: song.title, requestId };
   showPlayLoading(5, 'Connecting', song.title);
   if (button) { button.disabled = true; button.innerHTML = icon('loading'); }
@@ -1202,6 +1224,8 @@ async function playRemoteSong(song, button) {
     await playLocal(res.song, requestId);
   } catch (err) {
     if (requestId === playRequest) {
+      nowTitle.textContent = previousUi.title; nowChannel.textContent = previousUi.channel; nowThumb.src = previousUi.thumb;
+      seekBar.value = previousUi.seek; curTime.textContent = previousUi.current; durTime.textContent = previousUi.duration;
       const friendly = err?.code === 'YOUTUBE_BOT_CHECK' ? 'YouTube bot-check · Settings > YouTube Access me browser fallback optional hai' : ('Could not play · ' + err.message);
       showPlayLoading(null, friendly);
       if (err?.code === 'YOUTUBE_BOT_CHECK') showToast('YouTube bot-check laga hai. Playback retry-safe hai; Settings > YouTube Access me optional browser fallback enable kar sakte ho.');
