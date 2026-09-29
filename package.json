@@ -1,0 +1,63 @@
+{
+  "name": "deepeccho",
+  "version": "2.1.0",
+  "description": "DEEP-ECHO 2.1.0 - in-app auto updates and cloud release pipeline",
+  "main": "main.js",
+  "author": "Daiyan",
+  "license": "GPL-3.0",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "test": "node --test tests/*.test.js && node tests/renderer-smoke.cjs",
+    "dist:dir": "electron-builder --win --dir",
+    "release": "electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "ffmpeg-static": "5.3.0",
+    "whisper-cpp-node": "0.2.12",
+    "electron-updater": "6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "linkedom": "0.18.13"
+  },
+  "build": {
+    "appId": "com.dinecho.app",
+    "productName": "DEEP-ECHO",
+    "asar": false,
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/dinecho-logo.ico"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "bin/**/*",
+      "package.json",
+      "lib/**/*",
+      "release-config.json"
+    ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "src/assets/dinecho-logo.ico",
+      "uninstallerIcon": "src/assets/dinecho-logo.ico",
+      "installerHeaderIcon": "src/assets/dinecho-logo.ico",
+      "shortcutName": "DEEP-ECHO",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "artifactName": "DEEP-ECHO-${version}-Setup.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "windowsdaiyu-cyber",
+        "repo": "DEEP-ECHO-Releases",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

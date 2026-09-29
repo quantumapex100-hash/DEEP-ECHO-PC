@@ -1,0 +1,10 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
+const r=fs.readFileSync('src/renderer.js','utf8'),v=fs.readFileSync('src/v160-suite.js','utf8'),a=fs.readFileSync('lib/auto-transcribe.js','utf8'),html=fs.readFileSync('src/index.html','utf8');
+test('personal AI DJ uses likes plays completions skips recency current track and diversity',()=>{for(const token of ['signals.completes','signals.skips','stats.count','recentIndex','djTextAffinity(song,currentSong)','artistUse'])assert.ok(v.includes(token),token);assert.match(v,/Stable exploration/);});
+test('AI DJ never launches prefetch before first song start',()=>{const start=v.indexOf('async function startDJ');const end=v.indexOf('function refreshStats');const fn=v.slice(start,end);assert.ok(fn.indexOf('playContextAt')>=0);assert.doesNotMatch(fn,/prefetchNextQueued/);});
+test('playback starts before lyrics and visual secondary work',()=>{assert.match(r,/Critical path first/);assert.match(r,/await audioPlayer\.play\(\);[\s\S]{0,220}smartScheduleSecondaryPlayback/);});
+test('prefetch is delayed and single-track to reduce song-start hitch',()=>{assert.match(r,/smartSchedulePrefetch\(1250\)/);assert.match(r,/smartUpcomingSongs\(1\)/);assert.match(r,/One resolver at a time/);});
+test('recommendation refresh is deferred off startup critical path',()=>{assert.match(r,/smartScheduleRecommendationRefresh\(0,false\),3200/);});
+test('home and history DOM refreshes are deferred after playback',()=>{assert.match(r,/smartScheduleHomeRefresh\(900\)/);assert.match(r,/smartScheduleRecommendationRefresh\(5200,false\)/);assert.match(r,/smartRunIdle\(renderSmartHistory,420\)/);});
+test('local AI transcription avoids GPU contention with visualizer',()=>{assert.match(a,/use_gpu: false/);});
+test('UI labels AI DJ as personal',()=>{assert.match(html,/Personal AI DJ \+ Flow/);assert.match(html,/Learning your taste/);});

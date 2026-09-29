@@ -1,0 +1,30 @@
+DEEP-ECHO AUTO UPDATE - AB KYA KARNA HAI
+
+1) Source repo PRIVATE rakho:
+   windowsdaiyu-cyber/DEEP-ECHO
+
+2) PUSH-SOURCE-TO-GITHUB.bat double-click karo.
+   Agar GitHub browser login aaye to login/Authorize karo.
+
+3) GitHub me DEEP-ECHO repo kholo:
+   Settings > Secrets and variables > Actions > New repository secret
+
+4) Secret name exactly:
+   RELEASE_TOKEN
+
+5) Secret value ek fine-grained GitHub token hoga jisko sirf
+   DEEP-ECHO-Releases repo par Contents: Read and write permission ho.
+   Token ko ChatGPT chat me paste MAT karna.
+
+6) Uske baad future release ke liye source repo me tag push hoga, example:
+   v2.1.0
+   GitHub Actions Windows cloud PC installer build + publish karega.
+
+7) Pehla updater-enabled installer ek baar manually install hoga.
+   Uske baad future versions app ke andar Update notification se install honge.
+
+FUTURE RELEASE KO AUR SIMPLE KARNE KE LIYE:
+- package.json me version badhao
+- CLOUD-RELEASE.bat chalao
+- GitHub Actions cloud me installer banayega
+- Installed DEEP-ECHO ko update notification milegi

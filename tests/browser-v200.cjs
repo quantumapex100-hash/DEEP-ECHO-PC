@@ -1,0 +1,27 @@
+const {chromium}=require('playwright');const path=require('path');const fs=require('fs');const assert=require('node:assert/strict');
+process.chdir(path.resolve(__dirname,'..'));
+(async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.DEEP_ECHO_CHROMIUM || undefined,args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-zygote','--single-process']});const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.addInitScript(()=>{
+const songs=[{id:'test_song01',title:'Midnight Echo',channel:'Daiyan',duration:'3:20',url:'https://www.youtube.com/watch?v=test_song01'}];
+let quality='best';window.echoAPI=new Proxy({getLibrary:async()=>[],getHomeFeed:async()=>({topHits:songs,topArtistSongs:songs}),getYouTubeAccess:async()=>({enabled:false}),getLyrics:async()=>({syncedLyrics:'[00:00]Sound lives deeper\n[00:03]Every beat is yours'}),streamSong:async s=>({success:true,song:{...s,fileUrl:window.fixtureAudio}}),smartCacheInfo:async()=>({success:true,count:0,bytes:0}),v200:async(a,v)=>{if(a==='quality')return quality=v;if(a==='downloads')return [];if(a==='about')return {version:'2.1.0',platform:'win32',packaged:false,engineAvailable:true};if(a==='storage')return {downloads:{bytes:123456},cache:{bytes:3456},smartCache:{bytes:0}};if(a==='update-check')return {success:true,configured:false,message:'Update feed not published yet.'};return {success:true,message:'Checked'};}},{get:(o,k)=>o[k]||((...a)=>k.startsWith('on')?undefined:Promise.resolve({success:true}))});
+localStorage.setItem('deep-echo-seen-2.1.0','true');
+});await page.goto('file://'+path.resolve('src/index.html'));await page.waitForTimeout(600);await page.evaluate(()=>activateTab('settings'));await page.screenshot({path:'settings-v200.png',fullPage:false});
+await page.locator('#deSetup').click();await page.selectOption('#deSetupTheme','dragon');await page.locator('#deSetupSave').click();await page.locator('#deVisPreview').click();await page.waitForTimeout(600);await page.screenshot({path:'dragon-preview-v200.png'});await page.locator('#deepDialogClose').click();
+for(const id of ['deDownloads','deStorage','deRepair','deAbout','deOverlay','deThemePreview']){await page.locator('#'+id).click();await page.waitForTimeout(100);await page.locator('#deepDialogClose').click();}
+await page.locator('#deThemePreview').click();await page.selectOption('#dePreviewChoice','love');await page.locator('#deepDialogClose').click();assert.equal(await page.evaluate(()=>document.body.dataset.theme),'dragon');
+await page.locator('#dePerformance').selectOption('eco');assert.equal(await page.evaluate(()=>window.__dinechoVisualizerQuality),'eco');
+await page.evaluate(url=>window.fixtureAudio=url,'file://'+path.resolve('tests/fixtures/tone.wav'));
+await page.evaluate(()=>startSingleSong({id:'test_song01',title:'Fixture tone',channel:'QA',duration:'0:08',url:'https://www.youtube.com/watch?v=test_song01'}));
+await page.waitForTimeout(700);assert.equal(await page.evaluate(()=>audioPlayer.paused),false);
+await page.evaluate(()=>{audioPlayer.currentTime=3;});await page.waitForTimeout(100);await page.evaluate(()=>audioPlayer.pause());
+await page.waitForTimeout(2600);await page.evaluate(()=>audioPlayer.dispatchEvent(new Event('timeupdate')));
+assert.ok(await page.evaluate(()=>JSON.parse(localStorage.getItem('deep-echo-v200-session')).position)>=2.9);
+await page.evaluate(()=>{addToQueue({id:'second_song',title:'Next song',url:'https://example.com/song'});document.getElementById('v170SleepTimer').value='end';document.getElementById('v170SleepTimer').dispatchEvent(new Event('change'));audioPlayer.dispatchEvent(new Event('ended'));});
+assert.equal(await page.evaluate(()=>playQueue.length),1);assert.equal(await page.evaluate(()=>window.deepEchoStopAtEnd),false);
+await page.setViewportSize({width:800,height:600});await page.evaluate(()=>activateTab('settings'));await page.locator('#deAbout').click();await page.screenshot({path:'compact-v200.png'});assert.ok(await page.locator('#deepDialog').evaluate(e=>e.getBoundingClientRect().right<=innerWidth));await page.locator('#deepDialogClose').click();
+await page.locator('#deOffline').check();await page.evaluate(()=>runSearch('song','no match'));
+await page.evaluate(()=>activateTab('settings'));await page.locator('#deOffline').uncheck();
+await page.evaluate(()=>{window.searchResolvers={};window.echoAPI.search=q=>new Promise(r=>window.searchResolvers[q]=r);runSearch('song','older');runSearch('song','newer');});
+await page.evaluate(()=>window.searchResolvers.newer([{id:'new',title:'New result',channel:'QA',url:'https://example.com/new'}]));await page.waitForTimeout(50);
+await page.evaluate(()=>window.searchResolvers.older([{id:'old',title:'Stale result',channel:'QA',url:'https://example.com/old'}]));await page.waitForTimeout(50);
+assert.match(await page.locator('#resultsList').textContent(),/New result/);assert.doesNotMatch(await page.locator('#resultsList').textContent(),/Stale result/);
+console.log(JSON.stringify({errors,brand:await page.locator('.brand-text').textContent(),duplicateIds:await page.evaluate(()=>{const ids=[...document.querySelectorAll('[id]')].map(x=>x.id);return ids.filter((x,i)=>ids.indexOf(x)!==i)})},null,2));await browser.close();if(errors.length)process.exitCode=1;})().catch(e=>{console.error(e);process.exit(1)});

@@ -1,0 +1,92 @@
+name: Build and publish DEEP-ECHO Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: Short release notes shown on GitHub
+        required: false
+        default: Automated DEEP-ECHO release
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify release token exists
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw 'Missing RELEASE_TOKEN repository secret. Add a fine-grained token with Contents: Read and write access to DEEP-ECHO-Releases.'
+          }
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $tagVersion = $env:GITHUB_REF_NAME.TrimStart('v')
+          if ($packageVersion -ne $tagVersion) {
+            throw "Tag v$tagVersion does not match package.json version $packageVersion"
+          }
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Bundle latest yt-dlp
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          $nightly = 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe'
+          $stable = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+          try {
+            Invoke-WebRequest -Uri $nightly -OutFile 'bin/yt-dlp.exe' -UseBasicParsing
+          } catch {
+            Invoke-WebRequest -Uri $stable -OutFile 'bin/yt-dlp.exe' -UseBasicParsing
+          }
+          if (-not (Test-Path 'bin/yt-dlp.exe')) { throw 'yt-dlp download failed' }
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Build and publish release
+        run: npm run release
+
+      - name: Upload installer as workflow artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DEEP-ECHO-Windows-${{ github.ref_name }}
+          path: |
+            dist/DEEP-ECHO-*-Setup.exe
+            dist/latest.yml
+            dist/*.blockmap
+          if-no-files-found: warn
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-echo-build-debug
+          path: |
+            dist/**
+            builder-debug.yml
+            builder-effective-config.yaml
+          if-no-files-found: ignore

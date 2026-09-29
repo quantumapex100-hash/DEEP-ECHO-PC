@@ -1,0 +1,72 @@
+/* Deepeccho v1.6.9 — professional free-form lyric presentation.
+   Timing and active-line selection remain owned by the existing v1.6.7 lyric engine. */
+:root{--lyric-energy:0;--lyric-vocal:0;--lyric-hit:0;--lyric-bass:0;--lyric-treble:0;--lyric-motion:0;--lyric-bounce-y:0px;--lyric-bounce-scale:1;--lyric-particle-alpha:.18}
+
+/* Remove the boxed current-line treatment without changing row layout/timing. */
+body.lyrics-theme-fx .lyrics-body .lyric-line.current,
+body.lyrics-theme-fx .immersive-lyrics-body .lyric-line.current{
+  overflow:visible!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+  border-radius:0!important;
+  transform:translateX(10px) translateY(var(--lyric-bounce-y)) scale(var(--lyric-bounce-scale))!important;
+  transform-origin:left center!important;
+  transition:color .16s ease,opacity .16s ease,text-shadow .12s ease,filter .12s ease,transform .075s linear!important;
+  will-change:transform,filter,text-shadow;
+}
+body.lyrics-theme-fx .immersive-lyrics-body .lyric-line.current{transform:translateY(var(--lyric-bounce-y)) scale(var(--lyric-bounce-scale))!important}
+body.lyrics-theme-fx .lyrics-body .lyric-line.current::before,
+body.lyrics-theme-fx .immersive-lyrics-body .lyric-line.current::before{display:none!important}
+body.lyrics-theme-fx .lyrics-body .lyric-line.current::after,
+body.lyrics-theme-fx .immersive-lyrics-body .lyric-line.current::after{
+  inset:-22px -42px!important;
+  border-radius:0!important;
+  opacity:var(--lyric-particle-alpha)!important;
+  filter:brightness(calc(1 + var(--lyric-hit)*.55)) saturate(calc(1 + var(--lyric-energy)*.3));
+  mask-image:radial-gradient(ellipse at 35% 50%,#000 0 38%,rgba(0,0,0,.72) 58%,transparent 82%);
+  -webkit-mask-image:radial-gradient(ellipse at 35% 50%,#000 0 38%,rgba(0,0,0,.72) 58%,transparent 82%);
+  pointer-events:none;
+}
+
+/* Theme-personal particle fields. These are intentionally free-form, not rectangular highlights. */
+body.lyrics-theme-fx[data-theme="golden"] .lyric-line.current::after{background-image:radial-gradient(circle,rgba(255,248,190,.95) 0 1.2px,transparent 1.8px),radial-gradient(circle,rgba(255,190,62,.78) 0 1px,transparent 1.7px);background-size:23px 29px,41px 37px;animation:v169GoldDust 2.2s linear infinite}
+body.lyrics-theme-fx[data-theme="light"] .lyric-line.current::after{background-image:radial-gradient(circle,rgba(255,255,255,.88) 0 1px,transparent 1.6px);background-size:36px 31px;animation:v169SoftDust 3s ease-in-out infinite}
+body.lyrics-theme-fx[data-theme="dark"] .lyric-line.current::after{background-image:radial-gradient(circle,rgba(137,170,255,.72) 0 1px,transparent 1.7px);background-size:47px 31px;animation:v169DarkStars 2.8s linear infinite}
+body.lyrics-theme-fx[data-theme="purple"] .lyric-line.current::after{background-image:linear-gradient(118deg,transparent 0 43%,rgba(234,216,255,.9) 43.4%,transparent 44.2%),radial-gradient(circle,rgba(187,108,255,.9) 0 1.1px,transparent 1.7px);background-size:180px 100%,34px 37px;animation:v169Lightning 1.25s steps(6,end) infinite}
+body.lyrics-theme-fx[data-theme="toxic"] .lyric-line.current::after{background-image:radial-gradient(circle,rgba(119,255,150,.85) 0 1.5px,transparent 2.4px),radial-gradient(circle,rgba(49,255,102,.55) 0 2px,transparent 3.2px);background-size:38px 45px,61px 54px;animation:v169ToxicFloat 2.2s ease-in-out infinite}
+body.lyrics-theme-fx[data-theme="blood"] .lyric-line.current::after{background-image:radial-gradient(ellipse,rgba(255,72,100,.88) 0 1.5px,transparent 2.6px),radial-gradient(ellipse,rgba(154,0,37,.7) 0 2px,transparent 3.5px);background-size:37px 47px,59px 71px;animation:v169BloodDrift 1.8s cubic-bezier(.4,0,.2,1) infinite}
+body.lyrics-theme-fx[data-theme="silver"] .lyric-line.current::after{background-image:radial-gradient(circle,rgba(255,255,255,.96) 0 1px,transparent 1.6px),radial-gradient(circle,rgba(189,216,245,.8) 0 1px,transparent 1.8px);background-size:25px 31px,49px 43px;animation:v169SilverDust 1.9s linear infinite}
+body.lyrics-theme-fx[data-theme="transparent"] .lyric-line.current::after{background-image:radial-gradient(circle,rgba(225,242,255,.64) 0 1px,transparent 1.7px);background-size:39px 44px;animation:v169GlassDust 3.1s ease-in-out infinite}
+body.lyrics-theme-fx[data-theme="fluids"] .lyric-line.current::after{background-image:radial-gradient(ellipse,rgba(84,228,255,.72) 0 1.4px,transparent 2.3px),radial-gradient(ellipse,rgba(82,119,255,.48) 0 2px,transparent 3px);background-size:42px 33px,67px 53px;animation:v169FluidParticles 2s ease-in-out infinite}
+body.lyrics-theme-fx[data-theme="rgb"] .lyric-line.current::after{background-image:radial-gradient(circle,#ff6f98 0 1px,transparent 1.8px),radial-gradient(circle,#64e8ff 0 1px,transparent 1.8px),radial-gradient(circle,#9d74ff 0 1px,transparent 1.8px);background-size:29px 37px,41px 31px,53px 47px;animation:v169RgbDust 1.75s linear infinite}
+body.lyrics-theme-fx[data-theme="love"] .lyric-line.current::after{background-image:radial-gradient(circle,rgba(255,123,195,.92) 0 1.6px,transparent 2.5px),radial-gradient(circle,rgba(196,113,255,.7) 0 1px,transparent 1.9px);background-size:35px 43px,53px 39px;animation:v169LoveDust 1.9s ease-in-out infinite}
+body.lyrics-theme-fx[data-theme="space"] .lyric-line.current::after{background-image:radial-gradient(circle,rgba(255,255,255,.96) 0 1px,transparent 1.6px),radial-gradient(circle,rgba(92,217,255,.86) 0 1px,transparent 1.7px),radial-gradient(circle,rgba(194,109,255,.78) 0 1.1px,transparent 1.8px);background-size:23px 29px,41px 37px,67px 53px;animation:v169CosmicDust 2.4s linear infinite}
+
+/* Audio-reactive text brightness is shared; personality still comes from each theme above. */
+body.lyrics-theme-fx .lyric-line.current{filter:brightness(calc(1 + var(--lyric-vocal)*.10 + var(--lyric-hit)*.16))}
+
+@keyframes v169GoldDust{to{background-position:17px -23px,-19px 16px}}
+@keyframes v169SoftDust{0%,100%{background-position:0 0}50%{background-position:15px -12px}}
+@keyframes v169DarkStars{to{background-position:22px -17px}}
+@keyframes v169Lightning{0%,100%{background-position:130% 0,0 0}44%{background-position:48% 0,8px -9px}52%{background-position:43% 0,13px -15px}}
+@keyframes v169ToxicFloat{0%,100%{background-position:0 0,7px 5px}50%{background-position:13px -18px,-11px -21px}}
+@keyframes v169BloodDrift{0%,100%{background-position:0 0,5px 0}45%{background-position:11px 18px,-13px 24px}}
+@keyframes v169SilverDust{to{background-position:19px -17px,-23px 14px}}
+@keyframes v169GlassDust{0%,100%{background-position:0 0}50%{background-position:18px -11px}}
+@keyframes v169FluidParticles{0%,100%{background-position:-8px 4px,9px 0}50%{background-position:16px -12px,-14px 13px}}
+@keyframes v169RgbDust{to{background-position:17px -18px,-14px 16px,21px -13px}}
+@keyframes v169LoveDust{0%,100%{background-position:0 0,8px 4px}50%{background-position:10px -19px,-14px -12px}}
+@keyframes v169CosmicDust{to{background-position:16px -21px,-19px 12px,23px -15px}}
+
+@media(prefers-reduced-motion:reduce){body.lyrics-theme-fx .lyric-line.current{transform:none!important}body.lyrics-theme-fx .lyric-line.current::after{animation:none!important}}
+/* Preserve RGB gradient on the glyphs only; the row itself stays unboxed/free-form. */
+body.lyrics-theme-fx[data-theme="rgb"] .lyrics-body .lyric-line.current,
+body.lyrics-theme-fx[data-theme="rgb"] .immersive-lyrics-body .lyric-line.current{
+  background-image:linear-gradient(90deg,#ff5c7c,#ffd65c,#54ffa5,#64dfff,#ad7dff,#ff65d7)!important;
+  background-size:240% 100%!important;
+  background-clip:text!important;
+  -webkit-background-clip:text!important;
+  color:transparent!important;
+  -webkit-text-fill-color:transparent!important;
+}
