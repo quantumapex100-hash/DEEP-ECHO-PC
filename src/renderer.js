@@ -1224,6 +1224,7 @@ async function playRemoteSong(song, button) {
     await playLocal(res.song, requestId);
   } catch (err) {
     if (requestId === playRequest) {
+      // Restore the last confirmed Now Playing identity when the replacement cannot start.
       nowTitle.textContent = previousUi.title; nowChannel.textContent = previousUi.channel; nowThumb.src = previousUi.thumb;
       seekBar.value = previousUi.seek; curTime.textContent = previousUi.current; durTime.textContent = previousUi.duration;
       const friendly = err?.code === 'YOUTUBE_BOT_CHECK' ? 'YouTube bot-check · Settings > YouTube Access me browser fallback optional hai' : ('Could not play · ' + err.message);
@@ -3999,12 +4000,7 @@ function smartRebuildImmersiveLyrics(){
 }
 function smartUpdateImmersiveKaraoke(){
   if(!immersiveLyricsBody||!lyricLines.length)return;
-  const t=lyricsPlaybackClock();
-  immersiveLyricsBody.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{
-    const words=[...line.querySelectorAll('.karaoke-word')]; if(!words.length)return;
-    let count=0;if(i<activeLyric)count=words.length;else if(i===activeLyric){const start=lyricLines[i]?.time||0;const end=lyricLines[i+1]?.time||start+4.5;const p=Math.max(0,Math.min(1,(t-start)/Math.max(.5,end-start)));count=Math.min(words.length,Math.ceil(p*words.length));}
-    words.forEach((word,idx)=>word.classList.toggle('lit',idx<count));
-  });
+  smartPaintWordState(immersiveLyricsBody,lyricsPlaybackClock());
 }
 function smartSyncImmersiveLyricsState(force=false){
   if(!immersiveLyricsBody)return;
@@ -4049,6 +4045,10 @@ const lyricsFindInput = document.getElementById('lyricsFindInput');
 const lyricsOriginalToggle = document.getElementById('lyricsOriginalToggle');
 const lyricsFontSizeRange = document.getElementById('lyricsFontSizeRange');
 const lyricsFontSizeValue = document.getElementById('lyricsFontSizeValue');
+const wordByWordToggle = document.getElementById('wordByWordToggle');
+const wordByWordState = document.getElementById('wordByWordState');
+const WORD_BY_WORD_KEY = 'deepeccho-word-by-word-v222';
+let smartWordByWordEnabled = localStorage.getItem(WORD_BY_WORD_KEY) !== 'false';
 let smartLastLyricsPayload = null;
 let smartShowingOriginalLyrics = true;
 
@@ -4124,22 +4124,42 @@ function smartRenderLyricsVariant(showOriginal) {
 }
 lyricsOriginalToggle?.addEventListener('click',()=>smartRenderLyricsVariant(!smartShowingOriginalLyrics));
 
+function smartWordKey(value=''){
+  return String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu,'').trim();
+}
+function smartExactWordTimings(){
+  const list=Array.isArray(smartLastLyricsPayload?.wordTimings)?smartLastLyricsPayload.wordTimings:[];
+  return list.map(item=>({text:String(item?.text||''),key:smartWordKey(item?.text),time:Number(item?.time),end:Number(item?.end)})).filter(item=>item.key&&Number.isFinite(item.time)).sort((a,b)=>a.time-b.time);
+}
+function smartAssignWordTimes(line,index,words,exact){
+  if(!words.length)return 'line';
+  const start=Number(lyricLines[index]?.time)||0; const next=Number(lyricLines[index+1]?.time); const end=Number.isFinite(next)&&next>start?next:start+Math.max(2.2,Math.min(7.5,words.length*.52));
+  const candidates=exact.filter(item=>item.time>=Math.max(0,start-.6)&&item.time<=end+.65); let cursor=0,matched=0;
+  for(let wi=0;wi<words.length;wi++){const key=smartWordKey(words[wi].textContent);if(!key)continue;let hit=-1;for(let ci=cursor;ci<candidates.length;ci++){if(candidates[ci].key===key){hit=ci;break;}}if(hit<0)continue;const item=candidates[hit];words[wi].dataset.wordTime=String(item.time);if(Number.isFinite(item.end))words[wi].dataset.wordEnd=String(item.end);words[wi].dataset.wordExact='true';cursor=hit+1;matched++;}
+  const ratio=matched/Math.max(1,words.length);
+  if(matched>=Math.min(2,words.length)&&ratio>=.5){
+    for(let wi=0;wi<words.length;wi++){if(words[wi].dataset.wordTime)continue;let p=wi-1,n=wi+1;while(p>=0&&!words[p].dataset.wordTime)p--;while(n<words.length&&!words[n].dataset.wordTime)n++;if(p>=0&&n<words.length){const a=Number(words[p].dataset.wordTime),b=Number(words[n].dataset.wordTime);words[wi].dataset.wordTime=String(a+(b-a)*((wi-p)/(n-p)));words[wi].dataset.wordInterpolated='true';}}
+    line.dataset.wordTiming='exact';return 'exact';
+  }
+  words.forEach(word=>{delete word.dataset.wordTime;delete word.dataset.wordEnd;delete word.dataset.wordExact;delete word.dataset.wordInterpolated;});line.dataset.wordTiming='line';return 'line';
+}
+function smartRefreshWordByWordControl(){
+  if(wordByWordToggle){wordByWordToggle.setAttribute('aria-pressed',String(smartWordByWordEnabled));wordByWordToggle.classList.toggle('active',smartWordByWordEnabled);}if(wordByWordState)wordByWordState.textContent=smartWordByWordEnabled?'ON':'OFF';document.body.classList.toggle('word-by-word-off',!smartWordByWordEnabled);
+  if(wordByWordToggle&&smartWordByWordEnabled){const exact=!!lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]');wordByWordToggle.title=exact?'Word by Word ON · exact caption timing available':'Word by Word ON · exact word timing unavailable for this track, so safe line sync is used';}
+}
+function smartSetWordByWord(enabled,{announce=false}={}){
+  smartWordByWordEnabled=enabled!==false;localStorage.setItem(WORD_BY_WORD_KEY,String(smartWordByWordEnabled));smartRefreshWordByWordControl();
+  if(smartWordByWordEnabled){smartPrepareKaraokeWords();smartUpdateKaraoke();}else{lyricsBody?.querySelectorAll('.karaoke-word').forEach(word=>word.classList.remove('lit','word-current'));immersiveLyricsBody?.querySelectorAll('.karaoke-word').forEach(word=>word.classList.remove('lit','word-current'));}
+  if(announce)showToast(smartWordByWordEnabled?(lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]')?'Word by Word ON · exact timing':'Word by Word ON · exact word timing unavailable, line sync active'):'Word by Word OFF · line-by-line lyrics');
+}
 function smartPrepareKaraokeWords(){
-  lyricsBody?.querySelectorAll('.lyric-line[data-line]').forEach(line=>{
-    if(line.querySelector('.karaoke-word'))return; const text=line.textContent||''; line.textContent='';
-    const parts=text.split(/(\s+)/);parts.forEach(part=>{if(/^\s+$/.test(part)){line.appendChild(document.createTextNode(part));return;}const span=document.createElement('span');span.className='karaoke-word';span.textContent=part;line.appendChild(span);});
-  });
-  smartUpdateKaraoke();
+  const exact=smartExactWordTimings();lyricsBody?.querySelectorAll('.lyric-line[data-line]').forEach((line,index)=>{if(!line.querySelector('.karaoke-word')){const text=line.textContent||'';line.textContent='';const parts=text.split(/(\s+)/);parts.forEach(part=>{if(/^\s+$/.test(part)){line.appendChild(document.createTextNode(part));return;}const span=document.createElement('span');span.className='karaoke-word';span.textContent=part;line.appendChild(span);});}smartAssignWordTimes(line,index,[...line.querySelectorAll('.karaoke-word')],exact);});smartRefreshWordByWordControl();smartUpdateKaraoke();
 }
-function smartUpdateKaraoke(){
-  if(!lyricLines.length)return; const t=lyricsPlaybackClock();
-  lyricsBody.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{
-    const words=[...line.querySelectorAll('.karaoke-word')];if(!words.length)return;
-    let count=0;if(i<activeLyric)count=words.length;else if(i===activeLyric){const start=lyricLines[i]?.time||0;const end=lyricLines[i+1]?.time||start+4.5;const p=Math.max(0,Math.min(1,(t-start)/Math.max(.5,end-start)));count=Math.min(words.length,Math.ceil(p*words.length));}
-    words.forEach((word,idx)=>word.classList.toggle('lit',idx<count));
-  });
-  if (typeof smartUpdateImmersiveKaraoke === 'function') smartUpdateImmersiveKaraoke();
+function smartPaintWordState(root,t){
+  root?.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{const words=[...line.querySelectorAll('.karaoke-word')];if(!words.length)return;words.forEach(word=>word.classList.remove('lit','word-current'));if(!smartWordByWordEnabled||line.dataset.wordTiming!=='exact')return;let current=-1;words.forEach((word,idx)=>{const at=Number(word.dataset.wordTime);if(Number.isFinite(at)&&t>=at){word.classList.add('lit');current=idx;}});if(i===activeLyric&&current>=0&&current<words.length)words[current].classList.add('word-current');if(i<activeLyric)words.forEach(word=>{if(word.dataset.wordTime)word.classList.add('lit');});});
 }
+function smartUpdateKaraoke(){if(!lyricLines.length)return;const t=lyricsPlaybackClock();smartPaintWordState(lyricsBody,t);if(typeof smartUpdateImmersiveKaraoke==='function')smartUpdateImmersiveKaraoke();}
+wordByWordToggle?.addEventListener('click',()=>smartSetWordByWord(!smartWordByWordEnabled,{announce:true}));smartRefreshWordByWordControl();
 audioPlayer.addEventListener('timeupdate',smartUpdateKaraoke);
 lyricsBody?.addEventListener('click',event=>{const line=event.target.closest('.lyric-line[data-line]');if(!line)return;const index=Number(line.dataset.line);const target=lyricLines[index]?.time;if(Number.isFinite(target)){audioPlayer.currentTime=Math.max(0,target);setLyricsAutoFollow(true);syncLyrics(true);showToast(`Lyrics synced · ${formatTime(target)}`);}});
 

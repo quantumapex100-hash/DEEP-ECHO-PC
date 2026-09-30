@@ -1,7 +1,7 @@
 {
   "name": "deepeccho",
-  "version": "2.2.1",
-  "description": "DEEP-ECHO 2.2.1 - Search UI hotfix, correct track switching and faster GitHub releases",
+  "version": "2.2.2",
+  "description": "DEEP-ECHO 2.2.2 - Search/Home layout repair, exact word-sync toggle and always-visible version/What's New",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",

@@ -199,10 +199,10 @@
   }
   function renderSearchDiscovery() {
     const query = searchInput.value.trim();
-    const hasQuery = query.length > 0;
+    const hasCommittedQuery = !!query && query.toLowerCase() === committedSearchQuery.toLowerCase();
     const discovery = $('search220Discovery');
-    discovery?.classList.toggle('hidden', !hasQuery);
-    if (!hasQuery) {
+    discovery?.classList.toggle('hidden', !hasCommittedQuery);
+    if (!hasCommittedQuery) {
       $('search220QuickQueries')?.replaceChildren();
       $('search220RecommendGrid')?.replaceChildren();
       return;
@@ -234,6 +234,7 @@
 
   const panel = $('search220Autocomplete');
   let suggestionItems = [], selectedIndex = -1, suggestionSeq = 0, suggestionTimer = 0, ghostCompletion = '';
+  let committedSearchQuery = '';
   const localSuggestionPool = () => {
     let recentQueries = [];
     try { recentQueries = safeStored(STORAGE.recentSearches, []); } catch (_) {}
@@ -250,8 +251,7 @@
     $('search220Ghost')?.classList.toggle('has-completion', !!best && document.activeElement === searchInput);
   }
   function renderSuggestions(items, query) {
-    suggestionItems = uniqueText(items).slice(0, 6); selectedIndex = -1; panel?.replaceChildren();
-    if (String(query || '').trim() && suggestionItems.length) renderDiscoveryQueryChips(suggestionItems);
+    suggestionItems = uniqueText(items).slice(0, 4); selectedIndex = -1; panel?.replaceChildren();
     setGhost(query, suggestionItems);
     if (!panel || !suggestionItems.length || document.activeElement !== searchInput) { panel?.classList.add('hidden'); return; }
     suggestionItems.forEach((text, idx) => {
@@ -275,15 +275,20 @@
   function chooseSuggestion(index, searchNow) {
     const value = suggestionItems[index]; if (!value) return;
     searchInput.value = value; searchInput.setSelectionRange?.(value.length, value.length); hideSuggestions();
-    renderSearchDiscovery();
-    if (searchNow) runSearch('song', value);
+    if (searchNow) {
+      committedSearchQuery = value.trim();
+      activateTab('search');
+      renderSearchDiscovery();
+      runSearch('song', value);
+    }
   }
   function hideSuggestions() {
     panel?.classList.add('hidden'); selectedIndex = -1; $('search220Ghost')?.classList.remove('has-completion');
   }
   async function updateSuggestions() {
     const value = searchInput.value.trim(); const seq = ++suggestionSeq;
-    renderSearchDiscovery();
+    if (value.length >= 2 && homeView.classList.contains('active')) activateTab('search');
+    if (value.toLowerCase() !== committedSearchQuery.toLowerCase()) renderSearchDiscovery();
     if (value.length < 2) {
       suggestionItems = []; setGhost(value, []); hideSuggestions();
       return;
@@ -296,7 +301,7 @@
     if (seq !== suggestionSeq) return;
     renderSuggestions(uniqueText([...remote, ...local]), value);
   }
-  searchInput.addEventListener('input', () => { clearTimeout(suggestionTimer); suggestionTimer = setTimeout(updateSuggestions, 220); });
+  searchInput.addEventListener('input', () => { const value=searchInput.value.trim(); if (value.toLowerCase() !== committedSearchQuery.toLowerCase()) renderSearchDiscovery(); if (value.length >= 2 && homeView.classList.contains('active')) activateTab('search'); clearTimeout(suggestionTimer); suggestionTimer = setTimeout(updateSuggestions, 180); });
   searchInput.addEventListener('focus', () => {
     clearTimeout(suggestionTimer);
     if (searchInput.value.trim().length >= 2) suggestionTimer = setTimeout(updateSuggestions, 60);
@@ -309,10 +314,11 @@
     if ((event.key === 'Tab' || event.key === 'ArrowRight') && ghostCompletion && searchInput.selectionStart === searchInput.value.length && searchInput.selectionEnd === searchInput.value.length) {
       event.preventDefault(); event.stopImmediatePropagation(); searchInput.value = ghostCompletion; updateSuggestions(); return;
     }
-    if (event.key === 'Enter' && selectedIndex >= 0 && !panel?.classList.contains('hidden')) { event.preventDefault(); event.stopImmediatePropagation(); chooseSuggestion(selectedIndex, true); }
+    if (event.key === 'Enter' && selectedIndex >= 0 && !panel?.classList.contains('hidden')) { event.preventDefault(); event.stopImmediatePropagation(); chooseSuggestion(selectedIndex, true); return; }
+    if (event.key === 'Enter' && searchInput.value.trim()) { committedSearchQuery = searchInput.value.trim(); activateTab('search'); hideSuggestions(); setTimeout(renderSearchDiscovery, 0); }
   }, true);
   document.addEventListener('pointerdown', event => { if (!shell?.contains(event.target)) hideSuggestions(); });
-  searchBtn?.addEventListener('click', hideSuggestions);
+  searchBtn?.addEventListener('click', () => { committedSearchQuery = searchInput.value.trim(); activateTab('search'); hideSuggestions(); setTimeout(renderSearchDiscovery, 0); }, true);
 
   // Keep Home 2.0 and discovery fresh without touching playback core.
   document.querySelector('[data-tab="home"]')?.addEventListener('click', () => setTimeout(() => { renderHome220(); updateHomePulse(); }, 40));

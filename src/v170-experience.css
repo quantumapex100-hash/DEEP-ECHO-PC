@@ -103,3 +103,9 @@ body.v170-adaptive-pressure *{scroll-behavior:auto!important}
   .lyric-line.current,.immersive-lyrics-body .lyric-line.current{transform:none!important;transition:none!important}
   #nowThumb,#immersiveArt{transform:none!important}
 }
+
+/* v2.2.2 exact Word by Word mode. Safe fallback keeps ordinary line sync when exact timings are missing. */
+body.word-by-word-off .karaoke-word{color:inherit!important;text-shadow:inherit!important;opacity:inherit!important}
+.karaoke-word.word-current{color:var(--gold-bright);text-shadow:0 0 calc(12px + var(--lyric-vocal,0)*10px) color-mix(in srgb,var(--gold) 78%,transparent),0 0 30px color-mix(in srgb,var(--gold-bright) 24%,transparent);opacity:1}
+.lyric-line[data-word-timing="exact"] .karaoke-word:not(.lit){opacity:.72}
+.lyric-line.current[data-word-timing="exact"] .karaoke-word.word-current{filter:brightness(1.12)}

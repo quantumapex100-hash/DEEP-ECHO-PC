@@ -955,7 +955,9 @@ ipcMain.handle('get-lyrics', async (event, song) => {
           timingMatchCount: aligned.matched,
           timingConfidence: aligned.confidence,
           timingOffsetSeconds: aligned.offset,
-          detectedLanguage: youtube.captionLanguage || youtube.metadata?.language || ''
+          detectedLanguage: youtube.captionLanguage || youtube.metadata?.language || '',
+          wordTimings: Array.isArray(youtube.wordTimings) ? youtube.wordTimings : [],
+          wordTimingSource: youtube.wordTimingSource || ''
         });
       } else {
         result = withScriptVariants({ ...youtube, timingPrecision: 'youtube-exact', timingOffsetSeconds: 0 });
