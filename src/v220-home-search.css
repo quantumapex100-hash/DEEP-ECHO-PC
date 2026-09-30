@@ -42,3 +42,13 @@ body[data-theme="blood"] .home220-pulse.is-playing .home220-eq i{filter:drop-sha
 .search-box .search220-suggestion-icon{font-size:15px;opacity:.76}
 .search220-discovery.hidden{display:none!important}
 @media(max-width:900px){.search-box .search220-autocomplete{max-height:200px}.search-box button.search220-suggestion{grid-template-columns:20px minmax(0,1fr)}.search-box .search220-suggestion-hint{display:none}}
+
+/* 2.2.3: static lyric text in the app; floating-lyrics has its own document/styles. */
+body #lyricsView .lyric-line,
+body.lyrics-theme-fx[data-theme] #lyricsView .lyric-line.current,
+body.v170-karaoke #lyricsView .lyric-line.current,
+body.lyrics-theme-fx[data-theme] .immersive-lyrics-body .lyric-line.current {
+ transform:none!important; animation:none!important;
+ transition:color .16s ease,opacity .16s ease!important;
+ will-change:auto!important;
+}

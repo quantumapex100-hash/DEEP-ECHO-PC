@@ -45,17 +45,47 @@ runSearch=async function(mode='song',query=''){if(settings.offline){searchReques
 let session=C.safeSession(getStored(SESSION,null)),lastSave=0,recovering=false;
 function saveSession(clean=false){if(!currentSong)return;const now=Date.now();if(!clean&&now-lastSave<2500)return;lastSave=now;const safeSong=queueSong(currentSong);delete safeSong.streamUrl;setStored(SESSION,{song:safeSong,position:audioPlayer.currentTime||0,volume:Number(volumeRange.value),savedAt:now,clean});}
 function updateSessionText(){ $('deSessionState').textContent=session?`${session.clean?'Last session':'Recovered session'}: ${session.song.title||'Song'} · ${Math.floor(session.position/60)}:${String(Math.floor(session.position%60)).padStart(2,'0')}`:'Your last song and position will be saved automatically.';}
-async function resumeSong(song,position,volume){if(recovering)return;recovering=true;const id=song.id;let timeout;
- const restore=()=>{if(currentSong?.id!==id)return;audioPlayer.removeEventListener('loadedmetadata',restore);clearTimeout(timeout);if(Number.isFinite(audioPlayer.duration))audioPlayer.currentTime=Math.min(position,Math.max(0,audioPlayer.duration-1));if(volume!=null){volumeRange.value=String(volume);volumeRange.dispatchEvent(new Event('input'));}};
+async function resumeSong(song,position,volume,preserveContext=false){if(recovering)return;recovering=true;const id=song.id;let timeout,restored=false;
+ const restore=()=>{if(restored||currentSong?.id!==id)return;restored=true;audioPlayer.removeEventListener('loadedmetadata',restore);clearTimeout(timeout);if(Number.isFinite(audioPlayer.duration))audioPlayer.currentTime=Math.min(position,Math.max(0,audioPlayer.duration-1));if(volume!=null){volumeRange.value=String(volume);volumeRange.dispatchEvent(new Event('input'));}};
  audioPlayer.addEventListener('loadedmetadata',restore);timeout=setTimeout(()=>audioPlayer.removeEventListener('loadedmetadata',restore),45000);
- try{await startSingleSong(song);if(currentSong?.id===id&&audioPlayer.readyState>=1)restore();}finally{recovering=false;}}
+ try{if(preserveContext)await playRemoteSong(song);else await startSingleSong(song);if(currentSong?.id===id&&audioPlayer.readyState>=1)restore();}finally{recovering=false;}}
 on('deRestore','click',()=>{if(!session)return showToast('No saved session yet.');resumeSong(session.song,session.position,session.volume)});
 on('deRetry','click',()=>currentSong?resumeSong(queueSong(currentSong),audioPlayer.currentTime||0):showToast('Choose a song first.'));
 audioPlayer.addEventListener('timeupdate',()=>saveSession());audioPlayer.addEventListener('pause',()=>saveSession());window.addEventListener('beforeunload',()=>saveSession(true));updateSessionText();
-let retryCount=0,stallTimer=0,lastPosition=0;
-audioPlayer.addEventListener('timeupdate',()=>{if(audioPlayer.currentTime>lastPosition+.4){retryCount=0;clearTimeout(stallTimer)}lastPosition=audioPlayer.currentTime});
-function queueRecovery(){clearTimeout(stallTimer);if(!settings.recovery||recovering||!currentSong||settings.offline||retryCount>=2)return;const id=currentSong.id;stallTimer=setTimeout(()=>{if(currentSong?.id!==id||audioPlayer.ended||audioPlayer.paused)return;retryCount++;notify('Connection interrupted · retrying playback');resumeSong(queueSong(currentSong),audioPlayer.currentTime||0)},8000)}
-audioPlayer.addEventListener('waiting',queueRecovery);audioPlayer.addEventListener('stalled',queueRecovery);audioPlayer.addEventListener('pause',()=>clearTimeout(stallTimer));
+// Recovery watches real media progress, not the spacing between timeupdate events.
+let retryCount=0,stallTimer=0,lastPosition=0,healthyProgress=0,recoverySongId='';
+function clearRecovery(){clearTimeout(stallTimer);stallTimer=0;}
+function remoteRecoveryAllowed(){
+ const src=String(audioPlayer.currentSrc||audioPlayer.src||'');
+ return settings.recovery&&!settings.offline&&!recovering&&currentSong&&
+   /^https?:\/\//i.test(src)&&!audioPlayer.paused&&!audioPlayer.ended&&!audioPlayer.seeking&&retryCount<2;
+}
+audioPlayer.addEventListener('timeupdate',()=>{
+ const position=Number(audioPlayer.currentTime)||0;
+ const delta=position-lastPosition;
+ if(delta>0.01){clearRecovery();healthyProgress+=Math.min(delta,1);if(healthyProgress>=30)retryCount=0;}
+ lastPosition=position;
+});
+function queueRecovery(){
+ if(stallTimer||!remoteRecoveryAllowed())return;
+ const id=currentSong.id,src=audioPlayer.currentSrc||audioPlayer.src,position=audioPlayer.currentTime;
+ stallTimer=setTimeout(()=>{
+   stallTimer=0;
+   if(!remoteRecoveryAllowed()||currentSong.id!==id||(audioPlayer.currentSrc||audioPlayer.src)!==src)return;
+   // A stalled network event can occur while buffered audio is still playing.
+   if(Math.abs(audioPlayer.currentTime-position)>0.05||audioPlayer.readyState>=3)return;
+   retryCount++;healthyProgress=0;
+   notify('Connection interrupted · retrying playback');
+   resumeSong(queueSong(currentSong),audioPlayer.currentTime||0,undefined,true).catch(error=>notify('Playback retry failed: '+error.message));
+ },8000);
+}
+audioPlayer.addEventListener('waiting',queueRecovery);
+audioPlayer.addEventListener('stalled',queueRecovery);
+for(const event of ['playing','pause','seeking','ended','emptied','loadstart'])audioPlayer.addEventListener(event,clearRecovery);
+audioPlayer.addEventListener('loadedmetadata',()=>{
+ clearRecovery();lastPosition=Number(audioPlayer.currentTime)||0;
+ if(recoverySongId!==currentSong?.id){recoverySongId=currentSong?.id;retryCount=0;healthyProgress=0;}
+});
 // Shared sleep timer avoids two old controls racing against auto-next.
 let sleepTimer=0;function sleep(value){clearTimeout(sleepTimer);window.deepEchoStopAtEnd=value==='end';for(const id of ['v160Sleep','v170SleepTimer'])if($(id))$(id).value=value;if(Number(value)>0)sleepTimer=setTimeout(()=>{audioPlayer.pause();sleep('0');notify('Sleep timer finished')},Number(value)*60000)}
 for(const id of ['v160Sleep','v170SleepTimer'])on(id,'change',e=>sleep(e.target.value));window.addEventListener('deep-echo-sleep-finished',()=>sleep('0'));
@@ -64,6 +94,7 @@ let normalizationSamples=null;audioPlayer.addEventListener('loadedmetadata',()=>
 on('deLyricsFix','click',async()=>{if(!currentSong)return showToast('Play a song first.');await service('repair','lyrics');$('v170LyricsOffsetReset')?.click();$('v160OffsetReset')?.click();await loadLyricsFor(currentSong);notify('Lyrics reloaded and offsets reset')});
 let currentAppVersion='…';
 const whatsNewItems={
+ '2.2.3':['Fixed false playback recovery restarting healthy audio. Local downloads are excluded from network recovery.','Lyrics section bounce removed; floating overlay animation preserved.','Automatic update checks at startup, every minute, and on reconnect or return to the app.'],
  '2.2.2':['Search autocomplete is compact, readable and no longer breaks Home/Search layout.','Typing from Home moves cleanly into Search instead of covering the Home hero.','Lyrics now have a separate Word by Word ON/OFF control. Exact YouTube caption segment timing is used when available; otherwise DEEP-ECHO safely stays line-synced.','Current app version is always visible in Settings and About.','What’s New automatically follows the installed app version so every successful update is obvious.','Keeps the v2.2.1 correct-track switching and faster cached GitHub release workflow.']
 };
 function releaseItems(version){return whatsNewItems[version]||['DEEP-ECHO has been updated to this installed version.','Open Settings to see the current version and check for future updates.','Your existing library, playlists, themes and listening preferences remain available.'];}
@@ -91,7 +122,7 @@ on('deStorage','click',async()=>{modal('Storage manager','<p id="deStorageSummar
 on('deRepair','click',()=>{modal('Repair tools',`<p>Inspect downloads or reset a specific cache. Playlists and likes stay intact.</p><div class="deep-actions">${button('deRepairLibrary','Check downloaded files')}${button('deRepairLyrics','Reset lyrics cache')}${button('deRepairVisual','Reset visual preferences')}</div><p id="deRepairResult" role="status"></p>`);for(const [id,kind]of[['deRepairLibrary','library'],['deRepairLyrics','lyrics']])on(id,'click',async()=>{const r=await service('repair',kind);if($('deRepairResult'))$('deRepairResult').textContent=r.message||r.error});on('deRepairVisual','click',()=>{performancePreset('balanced');applyTheme('golden');lyricsStyle('theme');$('deRepairResult').textContent='Golden theme, balanced performance and theme lyrics restored.'})});
 on('deBackup','click',async()=>{const data={format:'deep-echo-backup',version:2,createdAt:new Date().toISOString(),playlists:getPlaylists(),liked:getLikedSongs(),settings:{...settings,theme:document.body.dataset.theme,quality:$('deDownloadQuality').value},session:getStored(SESSION,null)};const r=await service('backup',data);if(!r.cancelled)showToast(r.success?'Backup exported':r.error||'Backup unavailable')});
 const updateMb=v=>`${((Number(v)||0)/1048576).toFixed(1)} MB`;
-let updateVersion='';
+let updateVersion='',updateCheckRunning=false,lastUpdateCheck=0,announcedUpdate='';
 function updateProgressText(event){
  const out=$('deUpdateProgress');if(!out)return;
  if(event.type==='progress'){const p=Math.max(0,Math.min(100,Number(event.percent)||0));const speed=Number(event.bytesPerSecond)||0;out.textContent=`Downloading ${p.toFixed(0)}%${event.total?` · ${updateMb(event.transferred)} / ${updateMb(event.total)}`:''}${speed?` · ${updateMb(speed)}/s`:''}`;}
@@ -105,11 +136,17 @@ window.echoAPI.onUpdateEvent?.(event=>{
  if(event.type==='error'&&$('deUpdateState'))$('deUpdateState').textContent=event.error||'Update check failed.';
 });
 async function updates(automatic=false){
+ if(updateCheckRunning||(automatic&&(settings.offline||navigator.onLine===false||Date.now()-lastUpdateCheck<30000)))return;
+ updateCheckRunning=true;lastUpdateCheck=Date.now();
+ try {
  if($('deUpdateState'))$('deUpdateState').textContent='Checking…';
  const r=await service('update-check');
  if($('deUpdateState'))$('deUpdateState').textContent=r.success?(r.available?`Version ${r.available.version} is available`:(r.currentVersion?`Version ${r.currentVersion} · You are up to date.`:r.message||'You are up to date.')):(r.error||'Update check failed.');
  if(!r.available)return;
  updateVersion=r.available.version;
+ if(automatic&&announcedUpdate===updateVersion)return;
+ if(automatic&&dialog.open)return;
+ announcedUpdate=updateVersion;
  if(automatic)notify(`DEEP-ECHO ${updateVersion} update available`);
  modal('DEEP-ECHO update available',`<p id="deReleaseNotes"></p>${button('deUpdateDownload','Download update')}<p id="deUpdateProgress" role="status"></p>`);
  $('deReleaseNotes').textContent=`DEEP-ECHO ${r.available.version}\n${r.available.notes||'New fixes and improvements are ready.'}`;
@@ -125,9 +162,16 @@ async function updates(automatic=false){
    b.onclick=async()=>{b.disabled=true;saveSession(true);$('deUpdateProgress').textContent='Restarting DEEP-ECHO to install update…';const x=await service('update-install');if(!x.success){b.disabled=false;showToast(x.error||'Update install failed')}};
    $('deepDialogBody').appendChild(b);
  });
+ } catch(error){if($('deUpdateState'))$('deUpdateState').textContent=error.message||'Update check failed; will retry.';}
+ finally {updateCheckRunning=false;}
 }
 on('deUpdate','click',()=>updates(false));
-setTimeout(()=>{if(!settings.offline)updates(true)},12000);
+setTimeout(()=>updates(true),3000);
+setInterval(()=>updates(true),60000);
+window.addEventListener('online',()=>updates(true));
+window.addEventListener('focus',()=>updates(true));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)updates(true)});
+
 on('deAbout','click',async()=>{const r=await service('about');modal('About DEEP-ECHO',`<div class="deep-about"><h2>DEEP-ECHO</h2><p id="deAboutVersion">Version…</p><p>Developed by Daiyan [Allhamdullilah]</p><p id="deBuildDetails"></p><p>Music · Atmosphere · You</p></div>`);if($('deAboutVersion'))$('deAboutVersion').textContent=`Version ${r.version||'unknown'}`;$('deBuildDetails').textContent=r.version?`${r.platform} · ${r.packaged?'Installed build':'Source build'} · Audio engine ${r.engineAvailable?'ready':'needs Setup-YtDlp.bat'}`:r.error});
 hub.querySelectorAll('[data-settings-jump]').forEach(b=>b.onclick=()=>{const target=document.querySelector('.'+b.dataset.settingsJump);target?.scrollIntoView({behavior:'smooth',block:'start'})});
 // Download outcome notifications are polled without replacing existing IPC listeners.
