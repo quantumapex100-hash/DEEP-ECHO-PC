@@ -33,7 +33,7 @@ test('mini player has ten-second seeking and responds to current theme',()=>{
   assert.match(miniJs,/miniAction\('back10'\)/); assert.match(miniJs,/miniAction\('forward10'\)/);
   assert.match(js,/action==='back10'.*back10Btn\.click/); assert.match(js,/action==='forward10'.*forward10Btn\.click/);
   for(const theme of ['golden','light','dark','purple','toxic','blood','silver','transparent','fluids','rgb','love']) assert.match(miniCss,new RegExp(`data-theme="${theme}"`));
-  assert.match(main,/width: 480, height: 160/);
+  assert.match(main,/miniBounds = \{ width: 580, height: 190/); assert.match(main,/maxWidth: miniBounds\.maxWidth, maxHeight: miniBounds\.maxHeight/);
 });
 test('immersive player also exposes ten-second seek controls',()=>{
   assert.match(html,/id="immersiveBack10Btn"/); assert.match(html,/id="immersiveForward10Btn"/);

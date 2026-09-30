@@ -10,6 +10,7 @@
     playlistSnapshots: 'deepeccho-playlist-snapshots-v1',
     shortcuts: 'deepeccho-global-shortcuts-v1',
     floatingLyrics: 'deepeccho-floating-lyrics-v1',
+    immersiveLyrics: 'deepeccho-immersive-lyrics-window-v1',
     versionPreference: 'deepeccho-version-preference-v1'
   });
 
@@ -482,9 +483,72 @@
   const floatingToggleBtn = $('floatingLyricsToggleBtn');
   const floatingClickThroughPageBtn = $('floatingLyricsClickThroughPageBtn');
   const floatingClickThroughPageState = $('floatingLyricsClickThroughState');
+  const immersiveLyricsState = $('floatingImmersiveLyricsState');
+  const immersiveLyricsToggleBtn = $('floatingImmersiveLyricsToggleBtn');
+  const immersiveSettingsWindowState = $('immersiveSettingsWindowState');
+  const immersiveSettingsOpenBtn = $('immersiveSettingsOpenBtn');
+  const immersiveSettingsResetBtn = $('immersiveSettingsResetBtn');
+  const immersiveSettingsPanelOpacity = $('immersiveSettingsPanelOpacity');
+  const immersiveSettingsPanelOpacityValue = $('immersiveSettingsPanelOpacityValue');
+  const immersiveSettingsLyricsOpacity = $('immersiveSettingsLyricsOpacity');
+  const immersiveSettingsLyricsOpacityValue = $('immersiveSettingsLyricsOpacityValue');
+  const immersiveSettingsFontSize = $('immersiveSettingsFontSize');
+  const immersiveSettingsFontSizeValue = $('immersiveSettingsFontSizeValue');
+  const immersiveSettingsVisualizerToggle = $('immersiveSettingsVisualizerToggle');
+  const immersiveSettingsOnlyLyricsToggle = $('immersiveSettingsOnlyLyricsToggle');
+  const immersiveSettingsClickThroughToggle = $('immersiveSettingsClickThroughToggle');
+  const IMMERSIVE_DEFAULTS = { panelOpacity:72, lyricsOpacity:100, fontScale:100, visualizer:true, onlyLyrics:false, clickThrough:false };
   let floatingEnabled = false;
   let floatingClickThroughState = false;
   let floatingGraphEnabled = true;
+  let immersiveLyricsEnabled = false;
+  let immersiveLyricsVisualizerEnabled = true;
+  function immersivePrefs() {
+    const raw = getStored(STORAGE.immersiveLyrics, {});
+    return { ...IMMERSIVE_DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
+  }
+  function normalizeImmersivePrefs(value = {}) {
+    const next = { ...IMMERSIVE_DEFAULTS, ...immersivePrefs(), ...(value && typeof value === 'object' ? value : {}) };
+    next.panelOpacity = Math.max(0, Math.min(95, Number(next.panelOpacity) || 0));
+    next.lyricsOpacity = Math.max(35, Math.min(100, Number(next.lyricsOpacity) || 100));
+    next.fontScale = Math.max(80, Math.min(150, Number(next.fontScale) || 100));
+    next.visualizer = next.visualizer !== false;
+    next.onlyLyrics = !!next.onlyLyrics;
+    next.clickThrough = !!next.clickThrough;
+    return next;
+  }
+  function saveImmersivePrefs(value = {}) {
+    const next = normalizeImmersivePrefs(value);
+    setStored(STORAGE.immersiveLyrics, next);
+    immersiveLyricsVisualizerEnabled = next.visualizer;
+    renderImmersiveSettings(next);
+    return next;
+  }
+  function renderImmersiveWindowState() {
+    if (immersiveLyricsState) immersiveLyricsState.textContent = immersiveLyricsEnabled ? 'ON' : 'OFF';
+    immersiveLyricsToggleBtn?.classList.toggle('active', immersiveLyricsEnabled);
+    immersiveLyricsToggleBtn?.setAttribute('aria-pressed', immersiveLyricsEnabled ? 'true' : 'false');
+    if (immersiveSettingsWindowState) immersiveSettingsWindowState.textContent = immersiveLyricsEnabled ? 'ON' : 'OFF';
+    if (immersiveSettingsOpenBtn) immersiveSettingsOpenBtn.textContent = immersiveLyricsEnabled ? 'Close Immersive Lyrics' : 'Open Immersive Lyrics';
+  }
+  function renderImmersiveSettings(value = immersivePrefs()) {
+    const next = normalizeImmersivePrefs(value);
+    if (immersiveSettingsPanelOpacity) immersiveSettingsPanelOpacity.value = String(next.panelOpacity);
+    if (immersiveSettingsPanelOpacityValue) immersiveSettingsPanelOpacityValue.textContent = `${next.panelOpacity}%`;
+    if (immersiveSettingsLyricsOpacity) immersiveSettingsLyricsOpacity.value = String(next.lyricsOpacity);
+    if (immersiveSettingsLyricsOpacityValue) immersiveSettingsLyricsOpacityValue.textContent = `${next.lyricsOpacity}%`;
+    if (immersiveSettingsFontSize) immersiveSettingsFontSize.value = String(next.fontScale);
+    if (immersiveSettingsFontSizeValue) immersiveSettingsFontSizeValue.textContent = `${next.fontScale}%`;
+    if (immersiveSettingsVisualizerToggle) immersiveSettingsVisualizerToggle.checked = !!next.visualizer;
+    if (immersiveSettingsOnlyLyricsToggle) immersiveSettingsOnlyLyricsToggle.checked = !!next.onlyLyrics;
+    if (immersiveSettingsClickThroughToggle) immersiveSettingsClickThroughToggle.checked = !!next.clickThrough;
+    renderImmersiveWindowState();
+  }
+  async function publishImmersivePrefs(value = {}) {
+    const next = saveImmersivePrefs(value);
+    try { await window.echoAPI.setImmersiveLyricsPrefs?.({ panelOpacity:next.panelOpacity, lyricsOpacity:next.lyricsOpacity, fontScale:next.fontScale, visualizer:next.visualizer, onlyLyrics:next.onlyLyrics }); } catch (_) {}
+    return next;
+  }
   function renderFloatingClickThroughState() {
     floatingClickThroughPageBtn?.classList.toggle('active', floatingClickThroughState);
     floatingClickThroughPageBtn?.setAttribute('aria-pressed', floatingClickThroughState ? 'true' : 'false');
@@ -512,6 +576,57 @@
     floatingToggleBtn?.setAttribute('aria-pressed','false');
   }
   floatingToggleBtn?.addEventListener('click', () => floatingEnabled ? closeFloatingLyrics() : openFloatingLyrics());
+  async function openImmersiveLyrics() {
+    immersiveLyricsEnabled = true;
+    const saved = immersivePrefs();
+    await window.echoAPI.openImmersiveLyrics?.({ alwaysOnTop:true, clickThrough:!!saved.clickThrough, prefs:{ panelOpacity:saved.panelOpacity, lyricsOpacity:saved.lyricsOpacity, fontScale:saved.fontScale, visualizer:saved.visualizer, onlyLyrics:saved.onlyLyrics } });
+    renderImmersiveWindowState();
+    pushFloatingLyrics(true);
+  }
+  async function closeImmersiveLyrics() {
+    immersiveLyricsEnabled = false;
+    await window.echoAPI.closeImmersiveLyrics?.();
+    renderImmersiveWindowState();
+  }
+  immersiveLyricsToggleBtn?.addEventListener('click', () => immersiveLyricsEnabled ? closeImmersiveLyrics() : openImmersiveLyrics());
+  immersiveSettingsOpenBtn?.addEventListener('click', () => immersiveLyricsEnabled ? closeImmersiveLyrics() : openImmersiveLyrics());
+  window.echoAPI.onImmersiveLyricsWindowState?.((state={}) => {
+    immersiveLyricsEnabled = !!state.open;
+    renderImmersiveWindowState();
+    if (immersiveLyricsEnabled) pushFloatingLyrics(true);
+  });
+  function updateImmersiveRangePrefs() {
+    publishImmersivePrefs({
+      panelOpacity:Number(immersiveSettingsPanelOpacity?.value ?? immersivePrefs().panelOpacity),
+      lyricsOpacity:Number(immersiveSettingsLyricsOpacity?.value ?? immersivePrefs().lyricsOpacity),
+      fontScale:Number(immersiveSettingsFontSize?.value ?? immersivePrefs().fontScale)
+    });
+  }
+  immersiveSettingsPanelOpacity?.addEventListener('input', updateImmersiveRangePrefs);
+  immersiveSettingsLyricsOpacity?.addEventListener('input', updateImmersiveRangePrefs);
+  immersiveSettingsFontSize?.addEventListener('input', updateImmersiveRangePrefs);
+  immersiveSettingsVisualizerToggle?.addEventListener('change', () => publishImmersivePrefs({ visualizer:!!immersiveSettingsVisualizerToggle.checked }));
+  immersiveSettingsOnlyLyricsToggle?.addEventListener('change', () => publishImmersivePrefs({ onlyLyrics:!!immersiveSettingsOnlyLyricsToggle.checked }));
+  immersiveSettingsClickThroughToggle?.addEventListener('change', async () => {
+    const wanted = !!immersiveSettingsClickThroughToggle.checked;
+    try {
+      const result = await window.echoAPI.setImmersiveLyricsClickThrough?.(wanted);
+      const enabled = typeof result?.enabled === 'boolean' ? !!result.enabled : wanted;
+      saveImmersivePrefs({ clickThrough:enabled });
+    } catch (_) { renderImmersiveSettings(); showToast('Immersive click-through change nahi ho saka'); }
+  });
+  immersiveSettingsResetBtn?.addEventListener('click', async () => {
+    const next = await publishImmersivePrefs({ ...IMMERSIVE_DEFAULTS });
+    try { await window.echoAPI.setImmersiveLyricsClickThrough?.(false); } catch (_) {}
+    saveImmersivePrefs({ ...next, clickThrough:false });
+    showToast('Immersive Lyrics settings reset');
+  });
+  const initialImmersivePrefs = saveImmersivePrefs(immersivePrefs());
+  window.echoAPI.setImmersiveLyricsPrefs?.({ panelOpacity:initialImmersivePrefs.panelOpacity, lyricsOpacity:initialImmersivePrefs.lyricsOpacity, fontScale:initialImmersivePrefs.fontScale, visualizer:initialImmersivePrefs.visualizer, onlyLyrics:initialImmersivePrefs.onlyLyrics }).catch?.(()=>{});
+  window.echoAPI.onImmersiveLyricsPrefs?.((value={}) => {
+    saveImmersivePrefs(value);
+  });
+
   floatingClickThroughPageBtn?.addEventListener('click', async () => {
     try {
       const result = await window.echoAPI.toggleFloatingLyricsClickThrough?.();
@@ -542,15 +657,32 @@
     renderFloatingClickThroughState();
   });
 
+  window.echoAPI.onImmersiveLyricsClickThroughState?.((state={}) => {
+    saveImmersivePrefs({ clickThrough:!!state.enabled });
+  });
+  window.echoAPI.setImmersiveLyricsClickThrough?.(!!immersivePrefs().clickThrough).then?.((state={}) => {
+    saveImmersivePrefs({ clickThrough:!!state.enabled });
+  }).catch?.(()=>{});
+
   let floatingLyricsSignature = '';
   function floatingGraphPacket() {
-    if (!floatingGraphEnabled) return null;
+    if (!floatingGraphEnabled && !immersiveLyricsVisualizerEnabled) return null;
     try {
       const snap = (typeof readAudioEnergy === 'function') ? readAudioEnergy() : (window.__dinechoAudioEnergy || null);
       const src = (typeof visualizerSmoothedSpectrum !== 'undefined' && visualizerSmoothedSpectrum?.length)
         ? visualizerSmoothedSpectrum : ((typeof visualizerFrequencyData !== 'undefined' && visualizerFrequencyData?.length) ? visualizerFrequencyData : null);
-      if (!snap || !src?.length || !snap.hasSignal) return { spectrum:[], audioGraph:{ energy:Number(snap?.energy)||0, vocal:Number(snap?.vocal)||0, vocalTransient:Number(snap?.vocalTransient)||0, transient:Number(snap?.transient)||0, beatPulse:Number(snap?.beatPulse)||0, bass:Number(snap?.bass)||0, treble:Number(snap?.treble)||0, motion:Number(snap?.motion)||0, aggression:Number(snap?.aggression)||0, hasSignal:false } };
-      const count = 192, values = [];
+      if (!snap) return { spectrum:[], waveform:[], audioGraph:{ energy:0,vocal:0,vocalTransient:0,transient:0,beatPulse:0,bass:0,treble:0,motion:0,aggression:0,subBass:0,lowMid:0,mid:0,highMid:0,beatId:0,centroid:0,peak:0,rms:0,playing:false,hasSignal:false } };
+      const audioGraph = {
+        energy:snap.energy||0, vocal:snap.vocal||0, vocalTransient:snap.vocalTransient||0,
+        transient:snap.transient||0, beatPulse:snap.beatPulse||0, bass:snap.bass||0,
+        treble:snap.treble||0, motion:snap.motion||0, aggression:snap.aggression||0,
+        subBass:snap.subBass||0, lowMid:snap.lowMid||0, mid:snap.mid||0, highMid:snap.highMid||0,
+        beatId:Number(snap.beatId)||0, centroid:Number(snap.centroid)||0,
+        peak:Number(snap.peak)||0, rms:Number(snap.rms)||0,
+        playing:!!snap.playing, hasSignal:!!snap.hasSignal
+      };
+      if (!src?.length || !snap.hasSignal) return { spectrum:[], waveform:[], audioGraph:{ ...audioGraph, hasSignal:false } };
+      const count = 192, values = [], waveValues = [];
       for (let i=0;i<count;i++) {
         const ratio=i/Math.max(1,count-1);
         const hz=36*Math.pow(16000/36,ratio);
@@ -558,12 +690,17 @@
         const raw=Number(src[idx])||0;
         const v=(src instanceof Uint8Array) ? raw/255 : raw;
         values.push(Math.round(Math.max(0,Math.min(1,v))*1000)/1000);
+        const waveSrc=(typeof visualizerTimeData!=='undefined' && visualizerTimeData?.length) ? visualizerTimeData : null;
+        if (waveSrc?.length) {
+          const wi=Math.min(waveSrc.length-1,Math.round(ratio*(waveSrc.length-1)));
+          waveValues.push(Math.round(Math.max(-1,Math.min(1,((Number(waveSrc[wi])||128)-128)/128))*1000)/1000);
+        }
       }
-      return { spectrum:values, audioGraph:{ energy:snap.energy, vocal:snap.vocal, vocalTransient:snap.vocalTransient, transient:snap.transient, beatPulse:snap.beatPulse, bass:snap.bass, treble:snap.treble, motion:snap.motion, aggression:snap.aggression, hasSignal:!!snap.hasSignal } };
+      return { spectrum:values, waveform:waveValues, audioGraph };
     } catch (_) { return null; }
   }
   function pushFloatingLyrics(forceLines = false) {
-    if (!floatingEnabled) return;
+    if (!floatingEnabled && !immersiveLyricsEnabled) return;
     const plain = [...lyricsBody.querySelectorAll('.lyric-line.plain')];
     const playbackTime = typeof lyricsPlaybackClock === 'function' ? lyricsPlaybackClock() : Number(audioPlayer.currentTime || 0);
     let currentIndex = -1;
@@ -572,20 +709,22 @@
     }
     const current = currentIndex >= 0 ? lyricLines[currentIndex]?.text || '' : '';
     const next = currentIndex >= 0 ? lyricLines[currentIndex + 1]?.text || '' : (lyricLines[0]?.text || '');
-    const signature = `${currentSong?.id || ''}:${lyricLines.length}:${lyricLines[0]?.time ?? ''}:${lyricLines.at(-1)?.time ?? ''}:${lyricLines[0]?.text ?? ''}:${lyricLines.at(-1)?.text ?? ''}`;
+    const signature = `${currentSong?.id || ''}:${lyricLines.length}:${lyricLines[0]?.time ?? ''}:${lyricLines.at(-1)?.time ?? ''}:${lyricLines[0]?.text ?? ''}:${lyricLines.at(-1)?.text ?? ''}:${plain.length}:${plain[0]?.textContent ?? ''}:${plain.at(-1)?.textContent ?? ''}`;
     const payload = {
       title:currentSong?.title || '', artist:currentSong?.channel || '', current:current || plain[0]?.textContent || '',
       next:next || plain[1]?.textContent || '', fallback:currentSong ? 'Lyrics syncing…' : 'Play a song to see lyrics.',
-      playbackTime, sentAt:Date.now(), playing:!!audioPlayer.src && !audioPlayer.paused && !audioPlayer.ended, playbackRate:Number(audioPlayer.playbackRate || 1),
+      playbackTime, duration:Number(audioPlayer.duration || 0), sentAt:Date.now(), playing:!!audioPlayer.src && !audioPlayer.paused && !audioPlayer.ended, playbackRate:Number(audioPlayer.playbackRate || 1),
       theme:document.body.dataset.theme || 'golden', fontScale:(Number(localStorage.getItem(STORAGE.lyricsFontSize) || 100) / 100) || 1
     };
     const graphPacket = floatingGraphPacket();
     if (graphPacket) Object.assign(payload, graphPacket);
     if (forceLines || signature !== floatingLyricsSignature) {
       payload.lines = Array.isArray(lyricLines) ? lyricLines.map(line => ({ time:Number(line.time)||0, text:String(line.text||'') })) : [];
+      payload.plainLines = plain.map(line => String(line.textContent || '').trim()).filter(Boolean);
       floatingLyricsSignature = signature;
     }
-    window.echoAPI.syncFloatingLyrics(payload);
+    if (floatingEnabled) window.echoAPI.syncFloatingLyrics(payload);
+    if (immersiveLyricsEnabled) window.echoAPI.syncImmersiveLyrics?.(payload);
   }
   window.__deepecchoPushFloatingLyrics = (force = false) => pushFloatingLyrics(force);
   // Media events remain authoritative even when the main Deepeccho window is minimized.
@@ -595,16 +734,30 @@
   setInterval(() => pushFloatingLyrics(false), 400);
   // Real-audio graph refresh is intentionally separate from lyric timing. It never changes
   // active-line selection; it only mirrors the already-running analyser into the overlay.
-  setInterval(() => { if (floatingEnabled && floatingGraphEnabled) pushFloatingLyrics(false); }, 70);
+  setInterval(() => {
+    if (floatingEnabled && floatingGraphEnabled) pushFloatingLyrics(false);
+    else if (immersiveLyricsEnabled && immersiveLyricsVisualizerEnabled) pushFloatingLyrics(false);
+  }, 70);
   window.echoAPI.onFloatingLyricsAction?.((action) => {
     if (action === 'playPause') playPauseBtn?.click();
     else if (action === 'next') nextBtn?.click();
     else if (action === 'previous') previousBtn?.click();
     else if (action === 'back10') back10Btn?.click();
     else if (action === 'forward10') forward10Btn?.click();
+    else if (String(action).startsWith('seek:')) { const target=Number(String(action).slice(5)); if(Number.isFinite(target)&&Number.isFinite(audioPlayer.duration)&&audioPlayer.duration>0){ audioPlayer.currentTime=Math.max(0,Math.min(audioPlayer.duration,target)); pushFloatingLyrics(false); } }
     else if (action === 'graphOn') floatingGraphEnabled = true;
     else if (action === 'graphOff') floatingGraphEnabled = false;
     else if (action === 'close') { floatingEnabled=false; if(floatingState) floatingState.textContent='Closed'; }
+  });
+  window.echoAPI.onImmersiveLyricsAction?.((action) => {
+    if (action === 'playPause') playPauseBtn?.click();
+    else if (action === 'next') nextBtn?.click();
+    else if (action === 'previous') previousBtn?.click();
+    else if (action === 'back10') back10Btn?.click();
+    else if (action === 'forward10') forward10Btn?.click();
+    else if (String(action).startsWith('seek:')) { const target=Number(String(action).slice(5)); if(Number.isFinite(target)&&Number.isFinite(audioPlayer.duration)&&audioPlayer.duration>0){ audioPlayer.currentTime=Math.max(0,Math.min(audioPlayer.duration,target)); pushFloatingLyrics(false); } }
+    else if (action === 'visualizerOn') immersiveLyricsVisualizerEnabled = true;
+    else if (action === 'visualizerOff') immersiveLyricsVisualizerEnabled = false;
   });
 
   // Keep the Tools button for local playlist detail only.

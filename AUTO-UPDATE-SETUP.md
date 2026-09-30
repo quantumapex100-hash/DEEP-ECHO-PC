@@ -1,6 +1,6 @@
 # DEEP-ECHO Auto Update Setup
 
-DEEP-ECHO 2.1.0 uses `electron-updater` with GitHub Releases.
+DEEP-ECHO uses `electron-updater` with GitHub Releases. The current release target is `2.3.0`.
 
 - Source repository: `windowsdaiyu-cyber/DEEP-ECHO`
 - Public release repository: `windowsdaiyu-cyber/DEEP-ECHO-Releases`
@@ -21,11 +21,9 @@ Never put this token in source files or chat messages.
 
 ## Releasing
 
-1. Increase `package.json` version, for example `2.1.1`.
-2. Commit the changes.
-3. Create/push tag `v2.1.1`, or manually run the **Build and publish DEEP-ECHO Windows release** workflow.
-4. GitHub Actions builds the NSIS installer and publishes it, together with electron-builder update metadata, to `DEEP-ECHO-Releases`.
-5. Installed DEEP-ECHO builds detect the new version and show an in-app update prompt.
+For the official 2.3.0 build, run `RELEASE-2.3.0.bat` once from the release-ready source folder. It verifies the package version, installs exact dependencies, runs the full test suite, pushes `main`, creates/pushes `v2.3.0`, and triggers the tag-only GitHub Actions workflow.
+
+GitHub Actions builds the NSIS installer and publishes it with `.blockmap` and `latest.yml` to `DEEP-ECHO-Releases`. Installed DEEP-ECHO builds then detect the newer version and show the normal in-app update prompt.
 
 ## One-click helpers included in this package
 

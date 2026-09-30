@@ -1,0 +1,15 @@
+DEEP-ECHO 2.3.0 RELEASE READY
+
+Official release command:
+  Double-click RELEASE-2.3.0.bat
+
+CLOUD-RELEASE.bat bhi isi official release script ko call karta hai.
+
+Script pehle npm ci + complete npm test chalata hai. PASS hone ke baad hi main push, v2.3.0 tag aur GitHub Actions release trigger hota hai.
+
+Expected public updater assets:
+  DEEP-ECHO-2.3.0-Setup.exe
+  DEEP-ECHO-2.3.0-Setup.exe.blockmap
+  latest.yml
+
+IMPORTANT: Workflow chalne ke dauran release BAT dobara mat chalana.

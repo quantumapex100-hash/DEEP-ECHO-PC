@@ -41,12 +41,13 @@ test('stable v2.2.7 playback, lyrics recovery and download safeguards are still 
 });
 
 
-test('2.2 END final release removes the full lyrics overlay plane and labels the build clearly', () => {
+test('official 2.3 release removes test-only build labels while keeping visual polish isolated', () => {
   const html = read('src/index.html');
   const css = read('src/v228-visual-polish.css');
   const js = read('src/v228-visual-polish.js');
-  assert.match(html, /2\.2 END/);
-  assert.match(js, /2\.2 END/);
+  assert.match(html, />2\.3\.0<\/div>/);
+  assert.doesNotMatch(html, /V2 TEST|do not release/);
+  assert.doesNotMatch(js, /V2 TEST|do not release|RELEASE_DISPLAY_LABEL/);
   assert.match(css, /remove the full overlay plane between lyrics and the visualizer/);
 });
 
@@ -69,10 +70,8 @@ test('V4 uses theme-native visualizer glow instead of brute-force white brightne
 });
 
 
-test('2.2 END keeps distinct per-theme renderer identities', () => {
+test('distinct per-theme renderer identities remain preserved after 2.3 release polish', () => {
   const renderer = read('src/renderer.js');
-  const js = read('src/v228-visual-polish.js');
-  assert.match(js, /2\.2 END/);
   for (const accent of ['golden','light','dark','silver','glass','electric','toxic','fluid','rgb','love','space']) {
     assert.match(renderer, new RegExp(`accent: '${accent}'|accent === '${accent}'`));
   }

@@ -169,6 +169,24 @@ let splashWindow;
 let miniWindow;
 let floatingLyricsWindow;
 let floatingLyricsClickThrough = false;
+let immersiveLyricsWindow;
+let immersiveLyricsClickThrough = false;
+let immersiveLyricsAnchorGuard = false;
+let immersiveLyricsPrefs = { panelOpacity:72, lyricsOpacity:100, fontScale:100, visualizer:true, onlyLyrics:false };
+function normalizeImmersiveLyricsPrefs(value = {}) {
+  const next = { ...immersiveLyricsPrefs, ...(value && typeof value === 'object' ? value : {}) };
+  next.panelOpacity = Math.max(0, Math.min(95, Number(next.panelOpacity) || 0));
+  next.lyricsOpacity = Math.max(35, Math.min(100, Number(next.lyricsOpacity) || 100));
+  next.fontScale = Math.max(80, Math.min(150, Number(next.fontScale) || 100));
+  next.visualizer = next.visualizer !== false;
+  next.onlyLyrics = !!next.onlyLyrics;
+  return next;
+}
+function notifyImmersiveLyricsPrefs() {
+  const payload = { ...immersiveLyricsPrefs };
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('immersive-lyrics-prefs-update', payload);
+  if (immersiveLyricsWindow && !immersiveLyricsWindow.isDestroyed()) immersiveLyricsWindow.webContents.send('immersive-lyrics-prefs-update', payload);
+}
 const registeredGlobalShortcuts = new Map();
 const reliableGlobalShortcuts = new Map();
 
@@ -189,6 +207,7 @@ function reliableActionForAccelerator(action, accelerator) {
 function registerReliableDefaultShortcuts() {
   const defaults = [
     ['CommandOrControl+Alt+X', 'floatingClickThrough', () => toggleFloatingLyricsClickThrough()],
+    ['CommandOrControl+Alt+Shift+X', 'immersiveLyricsClickThrough', () => applyImmersiveLyricsClickThrough(!immersiveLyricsClickThrough)],
     ['CommandOrControl+Alt+Space', 'playPause', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('global-shortcut-action', 'playPause'); }]
   ];
   for (const [accelerator, action, callback] of defaults) {
@@ -299,8 +318,22 @@ function createMiniPlayerWindow(alwaysOnTop = true) {
     miniWindow.focus();
     return miniWindow;
   }
+  // Keep Mini Player intentionally horizontal, like Floating Lyrics. The bounds
+  // prevent an accidental giant/tiny window while still allowing useful resizing.
+  let miniBounds = { width: 580, height: 190, minWidth: 430, minHeight: 142, maxWidth: 980, maxHeight: 290 };
+  try {
+    const area = screen.getPrimaryDisplay().workArea;
+    miniBounds = {
+      ...miniBounds,
+      width: Math.min(620, Math.max(500, Math.round(area.width * .34))),
+      maxWidth: Math.max(620, Math.min(1120, area.width - 36)),
+      maxHeight: Math.max(220, Math.min(320, Math.round(area.height * .34)))
+    };
+  } catch (_) {}
   miniWindow = new BrowserWindow({
-    width: 480, height: 160, minWidth: 410, minHeight: 142,
+    width: miniBounds.width, height: miniBounds.height,
+    minWidth: miniBounds.minWidth, minHeight: miniBounds.minHeight,
+    maxWidth: miniBounds.maxWidth, maxHeight: miniBounds.maxHeight,
     frame: false, transparent: false, resizable: true, maximizable: false,
     alwaysOnTop: !!alwaysOnTop, skipTaskbar: false, backgroundColor: '#0d0a06',
     title: 'DEEP-ECHO Mini Player', icon: path.join(__dirname, 'src', 'assets', 'dinecho-logo.png'),
@@ -362,7 +395,7 @@ function createFloatingLyricsWindow(options = {}) {
     notifyFloatingLyricsWindowState(true);
     return floatingLyricsWindow;
   }
-  let floatingBounds = { width: 1180, height: 158, x: undefined, y: undefined, maxHeight: 230 };
+  let floatingBounds = { width: 1180, height: 158, x: undefined, y: undefined, maxWidth: 1500, maxHeight: 230 };
   try {
     const area = screen.getPrimaryDisplay().workArea;
     floatingBounds = {
@@ -370,12 +403,13 @@ function createFloatingLyricsWindow(options = {}) {
       height: Math.min(168, Math.max(138, Math.round(area.height * .17))),
       x: area.x + 14,
       y: area.y + 18,
-      maxHeight: Math.min(240, Math.max(190, Math.round(area.height * .26)))
+      maxWidth: Math.max(760, area.width),
+      maxHeight: Math.min(260, Math.max(190, Math.round(area.height * .28)))
     };
   } catch (_) {}
   floatingLyricsWindow = new BrowserWindow({
     width: floatingBounds.width, height: floatingBounds.height, x: floatingBounds.x, y: floatingBounds.y,
-    minWidth: 520, minHeight: 108, maxHeight: floatingBounds.maxHeight,
+    minWidth: 520, minHeight: 108, maxWidth: floatingBounds.maxWidth, maxHeight: floatingBounds.maxHeight,
     frame: false, transparent: true, resizable: true, maximizable: false,
     alwaysOnTop: true, skipTaskbar: true, backgroundColor: '#00000000',
     title: 'DEEP-ECHO Floating Lyrics', focusable: true,
@@ -392,6 +426,117 @@ function createFloatingLyricsWindow(options = {}) {
   floatingLyricsWindow.on('closed', () => { floatingLyricsWindow = null; notifyFloatingLyricsWindowState(false); });
   return floatingLyricsWindow;
 }
+
+
+function immersiveLyricsDisplayArea() {
+  try {
+    const sourceBounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
+    const display = sourceBounds ? screen.getDisplayMatching(sourceBounds) : screen.getPrimaryDisplay();
+    return display.workArea;
+  } catch (_) {
+    return { x:0, y:0, width:1280, height:720 };
+  }
+}
+function notifyImmersiveLyricsWindowState(open) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('immersive-lyrics-window-state', { open:!!open });
+}
+function notifyImmersiveLyricsClickThroughState() {
+  const payload = { enabled:!!immersiveLyricsClickThrough };
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('immersive-lyrics-click-through-state', payload);
+  if (immersiveLyricsWindow && !immersiveLyricsWindow.isDestroyed()) immersiveLyricsWindow.webContents.send('immersive-lyrics-click-through-state', payload);
+}
+function keepImmersiveLyricsVisible() {
+  if (!immersiveLyricsWindow || immersiveLyricsWindow.isDestroyed()) return;
+  try { immersiveLyricsWindow.setAlwaysOnTop(true, 'screen-saver', 1); } catch { try { immersiveLyricsWindow.setAlwaysOnTop(true); } catch {} }
+  try { immersiveLyricsWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen:true }); } catch {}
+  try { if (!immersiveLyricsWindow.isVisible()) immersiveLyricsWindow.showInactive(); } catch {}
+}
+function anchorImmersiveLyricsWindow() {
+  if (!immersiveLyricsWindow || immersiveLyricsWindow.isDestroyed() || immersiveLyricsAnchorGuard) return;
+  const area = immersiveLyricsDisplayArea();
+  const bounds = immersiveLyricsWindow.getBounds();
+  const width = Math.max(320, Math.min(bounds.width, Math.max(520, Math.round(area.width * .62))));
+  const next = { x:area.x + area.width - width, y:area.y, width, height:area.height };
+  if (bounds.x === next.x && bounds.y === next.y && bounds.width === next.width && bounds.height === next.height) return;
+  immersiveLyricsAnchorGuard = true;
+  try { immersiveLyricsWindow.setBounds(next, false); } finally { immersiveLyricsAnchorGuard = false; }
+}
+function applyImmersiveLyricsClickThrough(value) {
+  immersiveLyricsClickThrough = !!value;
+  if (immersiveLyricsWindow && !immersiveLyricsWindow.isDestroyed()) {
+    try { immersiveLyricsWindow.setIgnoreMouseEvents(immersiveLyricsClickThrough, { forward:true }); } catch {}
+    keepImmersiveLyricsVisible();
+  }
+  notifyImmersiveLyricsClickThroughState();
+  return immersiveLyricsClickThrough;
+}
+function createImmersiveLyricsWindow(options = {}) {
+  if (typeof options.clickThrough === 'boolean') immersiveLyricsClickThrough = !!options.clickThrough;
+  if (options.prefs && typeof options.prefs === 'object') immersiveLyricsPrefs = normalizeImmersiveLyricsPrefs(options.prefs);
+  if (immersiveLyricsWindow && !immersiveLyricsWindow.isDestroyed()) {
+    anchorImmersiveLyricsWindow();
+    keepImmersiveLyricsVisible();
+    applyImmersiveLyricsClickThrough(immersiveLyricsClickThrough);
+    notifyImmersiveLyricsWindowState(true);
+    return immersiveLyricsWindow;
+  }
+  const area = immersiveLyricsDisplayArea();
+  const width = Math.max(380, Math.min(Math.round(area.width * .27), 560));
+  immersiveLyricsWindow = new BrowserWindow({
+    width, height:area.height, x:area.x + area.width - width, y:area.y,
+    minWidth:320, minHeight:area.height, maxWidth:Math.max(520, Math.round(area.width * .62)), maxHeight:area.height,
+    frame:false, transparent:true, resizable:true, movable:false, maximizable:false, fullscreenable:false,
+    alwaysOnTop:true, skipTaskbar:true, backgroundColor:'#00000000',
+    title:'DEEP-ECHO Immersive Lyrics', focusable:true,
+    icon:path.join(__dirname, 'src', 'assets', 'dinecho-logo.png'),
+    webPreferences:{ preload:path.join(__dirname, 'preload.js'), contextIsolation:true, nodeIntegration:false, backgroundThrottling:false }
+  });
+  immersiveLyricsWindow.loadFile(path.join(__dirname, 'src', 'immersive-lyrics.html'));
+  immersiveLyricsWindow.once('ready-to-show', () => {
+    anchorImmersiveLyricsWindow();
+    keepImmersiveLyricsVisible();
+    applyImmersiveLyricsClickThrough(immersiveLyricsClickThrough);
+    notifyImmersiveLyricsPrefs();
+    notifyImmersiveLyricsWindowState(true);
+  });
+  immersiveLyricsWindow.on('resize', () => setImmediate(anchorImmersiveLyricsWindow));
+  immersiveLyricsWindow.on('show', () => { anchorImmersiveLyricsWindow(); keepImmersiveLyricsVisible(); });
+  immersiveLyricsWindow.on('closed', () => { immersiveLyricsWindow = null; notifyImmersiveLyricsWindowState(false); });
+  return immersiveLyricsWindow;
+}
+
+ipcMain.handle('open-immersive-lyrics', (_event, options = {}) => {
+  createImmersiveLyricsWindow(options);
+  return { success:true, clickThrough:immersiveLyricsClickThrough };
+});
+ipcMain.handle('close-immersive-lyrics', () => {
+  if (immersiveLyricsWindow && !immersiveLyricsWindow.isDestroyed()) immersiveLyricsWindow.close();
+  else notifyImmersiveLyricsWindowState(false);
+  return { success:true };
+});
+ipcMain.handle('set-immersive-lyrics-click-through', (_event, value) => ({ success:true, enabled:applyImmersiveLyricsClickThrough(value) }));
+ipcMain.handle('toggle-immersive-lyrics-click-through', () => ({ success:true, enabled:applyImmersiveLyricsClickThrough(!immersiveLyricsClickThrough) }));
+ipcMain.handle('get-immersive-lyrics-click-through', () => ({ success:true, enabled:!!immersiveLyricsClickThrough }));
+ipcMain.handle('set-immersive-lyrics-prefs', (_event, value = {}) => {
+  immersiveLyricsPrefs = normalizeImmersiveLyricsPrefs(value);
+  notifyImmersiveLyricsPrefs();
+  return { success:true, prefs:{ ...immersiveLyricsPrefs } };
+});
+ipcMain.handle('get-immersive-lyrics-prefs', () => ({ success:true, prefs:{ ...immersiveLyricsPrefs } }));
+ipcMain.on('immersive-lyrics-state', (_event, state) => {
+  if (immersiveLyricsWindow && !immersiveLyricsWindow.isDestroyed()) immersiveLyricsWindow.webContents.send('immersive-lyrics-state-update', state);
+});
+ipcMain.on('immersive-lyrics-action', (_event, action) => {
+  if (action === 'close') {
+    if (immersiveLyricsWindow && !immersiveLyricsWindow.isDestroyed()) immersiveLyricsWindow.close();
+    return;
+  }
+  if (action === 'toggleClickThrough') { applyImmersiveLyricsClickThrough(!immersiveLyricsClickThrough); return; }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('immersive-lyrics-action', action);
+  keepImmersiveLyricsVisible();
+  setTimeout(keepImmersiveLyricsVisible, 80);
+  setTimeout(keepImmersiveLyricsVisible, 420);
+});
 
 ipcMain.handle('open-floating-lyrics', (_event, options = {}) => {
   createFloatingLyricsWindow(options);
@@ -415,8 +560,8 @@ ipcMain.on('floating-lyrics-action', (_event, action) => {
     if (floatingLyricsWindow && !floatingLyricsWindow.isDestroyed()) {
       const compact = action === 'compactOn';
       const [w] = floatingLyricsWindow.getSize();
-      floatingLyricsWindow.setMinimumSize(compact ? 360 : 420, compact ? 82 : 115);
-      floatingLyricsWindow.setSize(Math.max(compact ? 430 : 620, w), compact ? 92 : 150, true);
+      floatingLyricsWindow.setMinimumSize(compact ? 430 : 520, compact ? 96 : 118);
+      floatingLyricsWindow.setSize(Math.max(compact ? 520 : 720, w), compact ? 108 : 168, true);
       keepFloatingLyricsVisible();
     }
     return;

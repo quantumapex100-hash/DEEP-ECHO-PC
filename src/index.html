@@ -21,7 +21,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><div class="brand-text">DEEP-ECHO</div></div>
-    <div class="v228-test-label">2.2 END</div>
+    <div class="v228-test-label">2.3.0</div>
 
     <nav class="side-nav">
       <button class="nav-item active" data-tab="home">Home</button>
@@ -154,6 +154,9 @@
                 <button id="v170LyricsOffsetReset" class="lyrics-fx-toggle lyrics-offset-step" type="button" title="Reset this song's saved sync correction"><strong id="v170LyricsOffsetLabel">0.0s</strong></button>
                 <button id="floatingLyricsToggleBtn" class="lyrics-fx-toggle floating-lyrics-page-toggle" type="button" aria-pressed="false" title="Open always-on-top floating lyrics">
                   <span class="floating-lyrics-mini-icon" aria-hidden="true">▱</span><span>Floating Lyrics</span><strong id="floatingLyricsState">OFF</strong>
+                </button>
+                <button id="floatingImmersiveLyricsToggleBtn" class="lyrics-fx-toggle immersive-lyrics-page-toggle" type="button" aria-pressed="false" title="Open right-side full-height Floating Immersive Lyrics">
+                  <span class="floating-lyrics-mini-icon" aria-hidden="true">▥</span><span>Immersive Lyrics</span><strong id="floatingImmersiveLyricsState">OFF</strong>
                 </button>
                 <button id="floatingLyricsClickThroughPageBtn" class="lyrics-fx-toggle floating-clickthrough-page-toggle" type="button" aria-pressed="false" title="Let mouse clicks pass through the floating lyrics overlay · Ctrl+Alt+X">
                   <svg class="floating-clickthrough-mini-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l12 9-5 1.5 3.5 6-2.8 1.6-3.4-6L6 19z"/><path d="M17.5 4.5l2 2M20 4l-3 3"/></svg><span>Click-through</span><strong id="floatingLyricsClickThroughState">OFF</strong>
@@ -354,6 +357,34 @@
                 <button id="openMiniPlayerSettingBtn" class="secondary-btn primary-outline" type="button">Open Mini Player</button>
                 <label class="switch-row"><span>Mini always on top</span><input id="miniAlwaysOnTopToggle" type="checkbox" checked/></label>
               </div>
+            </div>
+            <div class="immersive-lyrics-app-settings setting-block" id="immersiveLyricsAppSettings">
+              <div class="setting-title-row"><span>Floating Immersive Lyrics</span><strong id="immersiveSettingsWindowState">OFF</strong></div>
+              <p class="setting-help">Right-side full-height overlay. These controls stay synced with the overlay settings.</p>
+              <div class="immersive-settings-actions">
+                <button id="immersiveSettingsOpenBtn" class="secondary-btn primary-outline" type="button">Open Immersive Lyrics</button>
+                <button id="immersiveSettingsResetBtn" class="secondary-btn" type="button">Reset</button>
+              </div>
+              <div class="immersive-settings-grid">
+                <label>
+                  <span class="setting-title-row"><span>Overlay opacity</span><strong id="immersiveSettingsPanelOpacityValue">72%</strong></span>
+                  <input id="immersiveSettingsPanelOpacity" type="range" min="0" max="95" step="1" value="72" aria-label="Immersive Lyrics overlay opacity"/>
+                </label>
+                <label>
+                  <span class="setting-title-row"><span>Lyrics opacity</span><strong id="immersiveSettingsLyricsOpacityValue">100%</strong></span>
+                  <input id="immersiveSettingsLyricsOpacity" type="range" min="35" max="100" step="1" value="100" aria-label="Immersive Lyrics text opacity"/>
+                </label>
+                <label>
+                  <span class="setting-title-row"><span>Lyrics size</span><strong id="immersiveSettingsFontSizeValue">100%</strong></span>
+                  <input id="immersiveSettingsFontSize" type="range" min="80" max="150" step="1" value="100" aria-label="Immersive Lyrics font size"/>
+                </label>
+              </div>
+              <div class="immersive-settings-switches">
+                <label class="switch-row"><span>Theme visualizer</span><input id="immersiveSettingsVisualizerToggle" type="checkbox" checked/></label>
+                <label class="switch-row"><span>Only Lyrics mode</span><input id="immersiveSettingsOnlyLyricsToggle" type="checkbox"/></label>
+                <label class="switch-row"><span>Click-through</span><input id="immersiveSettingsClickThroughToggle" type="checkbox"/></label>
+              </div>
+              <p class="setting-help">Click-through shortcut: Ctrl + Alt + Shift + X. It remains available even when the overlay ignores mouse clicks.</p>
             </div>
           </div>
 

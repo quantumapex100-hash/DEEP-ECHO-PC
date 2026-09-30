@@ -1,4 +1,4 @@
-name: Build and publish DEEP-ECHO 2.2 END
+name: Build and publish DEEP-ECHO 2.3.0
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
       RELEASE_REPO: windowsdaiyu-cyber/DEEP-ECHO-Releases
-      RELEASE_TITLE: 2.2 END
+      RELEASE_TITLE: DEEP-ECHO 2.3.0
 
     steps:
       - name: Checkout source
@@ -43,8 +43,8 @@ jobs:
           if ($packageVersion -ne $tagVersion) {
             throw "Tag v$tagVersion does not match package.json version $packageVersion"
           }
-          if ($packageVersion -ne '2.2.8') {
-            throw "2.2 END must ship as semantic version 2.2.8, found $packageVersion"
+          if ($packageVersion -ne '2.3.0') {
+            throw "DEEP-ECHO 2.3 release must ship as semantic version 2.3.0, found $packageVersion"
           }
           gh api "repos/$env:RELEASE_REPO" --jq '.full_name' | Out-Null
 
@@ -80,27 +80,33 @@ jobs:
       - name: Build and publish installer
         run: npm run release
 
-      - name: Finalize GitHub release title and notes
+      - name: Finalize release title and notes
         shell: pwsh
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
-          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.2-END.md --latest
-          $view = gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,url,assets,publishedAt,isDraft,isPrerelease | ConvertFrom-Json
-          $latestTag = gh api "repos/$env:RELEASE_REPO/releases/latest" --jq ".tag_name"
-          if ($latestTag -ne $tag) { throw "Release $tag exists but is not the latest release. Latest is $latestTag" }
-          if ($view.name -ne $env:RELEASE_TITLE) { throw "Release title mismatch: expected $env:RELEASE_TITLE, got $($view.name)" }
-          if (-not ($view.assets.name -contains "DEEP-ECHO-$packageVersion-Setup.exe")) { throw "Installer asset missing from release." }
-          if (-not ($view.assets.name -contains "latest.yml")) { throw "latest.yml missing from release." }
-          Write-Host "Release verified: $($view.name) [$($view.tagName)]"
-          Write-Host "Latest endpoint: $latestTag"
-          Write-Host "URL: $($view.url)"
+          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.3.0.md --latest
+          gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,url,assets
+
+      - name: Verify latest updater assets
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+          $latestTag = gh api "repos/$env:RELEASE_REPO/releases/latest" --jq '.tag_name'
+          if ($latestTag -ne $tag) { throw "Latest release is $latestTag, expected $tag" }
+          $assets = gh api "repos/$env:RELEASE_REPO/releases/tags/$tag" --jq '.assets[].name'
+          $required = @("DEEP-ECHO-$packageVersion-Setup.exe", "DEEP-ECHO-$packageVersion-Setup.exe.blockmap", "latest.yml")
+          foreach ($name in $required) {
+            if ($assets -notcontains $name) { throw "Missing required release asset: $name" }
+          }
+          Write-Host "Verified latest release $tag with installer, blockmap and latest.yml"
 
       - name: Upload build diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: deep-echo-2.2-end-build-debug
+          name: deep-echo-2.3.0-build-debug
           path: |
             dist/**
             builder-debug.yml

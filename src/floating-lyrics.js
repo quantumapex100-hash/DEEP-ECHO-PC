@@ -4,6 +4,10 @@ const nextEl = document.getElementById('floatingNextLine');
 const root = document.getElementById('floatingRoot');
 const graphCanvas = document.getElementById('floatingGraphCanvas');
 const graphBtn = document.getElementById('floatingGraph');
+const seekEl = document.getElementById('floatingSeek');
+const progressFillEl = document.getElementById('floatingProgressFill');
+const progressCurrentEl = document.getElementById('floatingProgressCurrent');
+const progressDurationEl = document.getElementById('floatingProgressDuration');
 let compact = localStorage.getItem('deepeccho-floating-compact') === '1';
 let syncedLines = [];
 let clock = { baseTime: 0, basePerf: performance.now(), playing: false, rate: 1 };
@@ -17,6 +21,15 @@ let graphPeaks = [];
 let graphRaf = 0;
 let userFontScale = 1;
 let overlayScale = 1;
+let mediaDuration = 0;
+let seekPreview = false;
+let seekPreviewTime = 0;
+function fmtFloatingTime(sec) {
+  const safe = Number.isFinite(Number(sec)) ? Math.max(0, Number(sec)) : 0;
+  const mins = Math.floor(safe / 60);
+  const secs = Math.floor(safe % 60).toString().padStart(2, '0');
+  return `${mins}:${secs}`;
+}
 
 function normalizeFloatingLines(lines = []) {
   if (window.DeepecchoLyricsTimeline?.normalizeTimeline) return window.DeepecchoLyricsTimeline.normalizeTimeline(lines);
@@ -227,6 +240,40 @@ function renderSyncedLyrics() {
   nextEl.textContent = index >= 0 ? (syncedLines[index + 1]?.text || '') : (syncedLines[1]?.text || '');
 }
 
+function renderFloatingProgress() {
+  const duration = Math.max(0, Number(mediaDuration) || 0);
+  const liveTime = seekPreview ? seekPreviewTime : estimatedPlaybackTime();
+  const current = duration > 0 ? Math.max(0, Math.min(duration, liveTime)) : Math.max(0, liveTime);
+  const pct = duration > 0 ? Math.max(0, Math.min(100, current / duration * 100)) : 0;
+  if (progressFillEl) progressFillEl.style.width = `${pct}%`;
+  if (seekEl && !seekPreview) {
+    seekEl.max = String(duration > 0 ? duration : 1);
+    seekEl.value = String(duration > 0 ? current : 0);
+  }
+  if (progressCurrentEl) progressCurrentEl.textContent = fmtFloatingTime(current);
+  if (progressDurationEl) progressDurationEl.textContent = fmtFloatingTime(duration);
+  root.style.setProperty('--fl-progress', `${pct.toFixed(3)}%`);
+}
+
+seekEl?.addEventListener('pointerdown', () => {
+  seekPreview = true;
+  seekPreviewTime = Number(seekEl.value) || 0;
+});
+seekEl?.addEventListener('input', () => {
+  seekPreview = true;
+  seekPreviewTime = Math.max(0, Math.min(Math.max(0, mediaDuration || 0), Number(seekEl.value) || 0));
+  renderFloatingProgress();
+});
+seekEl?.addEventListener('change', () => {
+  const target = Math.max(0, Math.min(Math.max(0, mediaDuration || 0), Number(seekEl.value) || 0));
+  if (mediaDuration > 0) window.echoAPI?.floatingLyricsAction?.(`seek:${target.toFixed(3)}`);
+  clock.baseTime = target;
+  clock.basePerf = performance.now();
+  seekPreview = false;
+  renderFloatingProgress();
+});
+seekEl?.addEventListener('pointercancel', () => { seekPreview = false; renderFloatingProgress(); });
+
 window.echoAPI?.onFloatingLyricsState?.((state = {}) => {
   document.body.dataset.theme = state.theme || 'golden';
   songEl.textContent = [state.title, state.artist].filter(Boolean).join(' · ') || 'DEEP-ECHO Lyrics';
@@ -235,12 +282,14 @@ window.echoAPI?.onFloatingLyricsState?.((state = {}) => {
   if (Array.isArray(state.spectrum)) graphSpectrum = state.spectrum.map(v=>Math.max(0,Math.min(1,Number(v)||0)));
   if (state.audioGraph && typeof state.audioGraph === 'object') graphAudio = { ...graphAudio, ...state.audioGraph };
   clock = { baseTime: Number(state.playbackTime || 0), basePerf: performance.now(), playing: !!state.playing, rate: Number(state.playbackRate || 1) || 1 };
+  mediaDuration = Math.max(0, Number(state.duration || mediaDuration || 0));
   userFontScale = Math.max(.8, Math.min(1.5, Number(state.fontScale) || 1));
   applyOverlayScale();
   renderSyncedLyrics();
+  renderFloatingProgress();
 });
 
-setInterval(renderSyncedLyrics, 80);
+setInterval(() => { renderSyncedLyrics(); renderFloatingProgress(); }, 80);
 
 const action = (id, name) => document.getElementById(id)?.addEventListener('click', () => window.echoAPI.floatingLyricsAction(name));
 action('floatingBack10', 'back10');

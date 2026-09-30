@@ -56,6 +56,35 @@ contextBridge.exposeInMainWorld('echoAPI', {
     ipcRenderer.removeAllListeners('v200-update-event');
     ipcRenderer.on('v200-update-event', (_event, payload) => callback(payload));
   },
+  openImmersiveLyrics: (options) => ipcRenderer.invoke('open-immersive-lyrics', options),
+  closeImmersiveLyrics: () => ipcRenderer.invoke('close-immersive-lyrics'),
+  setImmersiveLyricsClickThrough: (value) => ipcRenderer.invoke('set-immersive-lyrics-click-through', value),
+  toggleImmersiveLyricsClickThrough: () => ipcRenderer.invoke('toggle-immersive-lyrics-click-through'),
+  getImmersiveLyricsClickThrough: () => ipcRenderer.invoke('get-immersive-lyrics-click-through'),
+  setImmersiveLyricsPrefs: (value) => ipcRenderer.invoke('set-immersive-lyrics-prefs', value),
+  getImmersiveLyricsPrefs: () => ipcRenderer.invoke('get-immersive-lyrics-prefs'),
+  syncImmersiveLyrics: (state) => ipcRenderer.send('immersive-lyrics-state', state),
+  immersiveLyricsAction: (action) => ipcRenderer.send('immersive-lyrics-action', action),
+  onImmersiveLyricsState: (callback) => {
+    ipcRenderer.removeAllListeners('immersive-lyrics-state-update');
+    ipcRenderer.on('immersive-lyrics-state-update', (_event, state) => callback(state));
+  },
+  onImmersiveLyricsAction: (callback) => {
+    ipcRenderer.removeAllListeners('immersive-lyrics-action');
+    ipcRenderer.on('immersive-lyrics-action', (_event, action) => callback(action));
+  },
+  onImmersiveLyricsWindowState: (callback) => {
+    ipcRenderer.removeAllListeners('immersive-lyrics-window-state');
+    ipcRenderer.on('immersive-lyrics-window-state', (_event, state) => callback(state));
+  },
+  onImmersiveLyricsClickThroughState: (callback) => {
+    ipcRenderer.removeAllListeners('immersive-lyrics-click-through-state');
+    ipcRenderer.on('immersive-lyrics-click-through-state', (_event, state) => callback(state));
+  },
+  onImmersiveLyricsPrefs: (callback) => {
+    ipcRenderer.removeAllListeners('immersive-lyrics-prefs-update');
+    ipcRenderer.on('immersive-lyrics-prefs-update', (_event, prefs) => callback(prefs));
+  },
   openFloatingLyrics: (options) => ipcRenderer.invoke('open-floating-lyrics', options),
   closeFloatingLyrics: () => ipcRenderer.invoke('close-floating-lyrics'),
   setFloatingLyricsClickThrough: (value) => ipcRenderer.invoke('set-floating-lyrics-click-through', value),

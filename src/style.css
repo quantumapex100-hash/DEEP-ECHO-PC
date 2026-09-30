@@ -1467,3 +1467,13 @@ body.deepeccho-game-mode[data-theme="space"] #particles{opacity:.28!important;}
   .playlist-card-actions.has-delete { grid-template-columns:1fr 1fr; }
   .playlist-card-actions.has-delete .playlist-delete-btn { grid-column:1 / -1; }
 }
+
+/* v2.3.0 V4 — Floating Immersive Lyrics controls inside main Settings */
+.immersive-lyrics-app-settings{margin-top:14px}
+.immersive-settings-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.immersive-settings-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.immersive-settings-grid>label{display:block;min-width:0;font-size:12px}
+.immersive-settings-grid input[type="range"]{width:100%;margin-top:9px;accent-color:var(--gold)}
+.immersive-settings-switches{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 14px;margin-top:10px}
+.immersive-settings-switches .switch-row{margin-top:6px}
+@media(max-width:900px){.immersive-settings-grid,.immersive-settings-switches{grid-template-columns:1fr}}

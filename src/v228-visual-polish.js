@@ -5,7 +5,6 @@
   // lyrics timing and download code so the v2.2.7 stable behaviour is preserved.
   const BRIGHTNESS_KEY = 'deepecho-v228-visualizer-brightness';
   const BACKDROP_KEY = 'deepecho-v228-lyrics-backdrop-darkness';
-  const RELEASE_DISPLAY_LABEL = '2.2 END';
   const V4_MIGRATION_KEY = 'deepecho-v228-v4-glow-migrated';
   const FUTURE_LYRICS_KEY = 'deepecho-v228-future-lyrics-contrast';
 
@@ -60,15 +59,6 @@
   applyBackdrop(localStorage.getItem(BACKDROP_KEY) ?? 0, false);
   applyFutureLyricsContrast(localStorage.getItem(FUTURE_LYRICS_KEY) ?? 64, false);
   syncGlowPreset(brightnessRange?.value || 108);
-
-  const testVersionText = () => {
-    const el = document.getElementById('deCurrentVersion');
-    if (el) el.innerHTML = `<strong>Current version: ${RELEASE_DISPLAY_LABEL}</strong> · Final 2.2 release · v2.2.8`;
-    const hub = document.getElementById('deHubVersion');
-    if (hub) hub.textContent = '2.2 END';
-  };
-  testVersionText();
-  setTimeout(testVersionText, 1200);
 
   brightnessRange?.addEventListener('input', event => { applyBrightness(event.currentTarget.value); syncGlowPreset(event.currentTarget.value); });
   glowPreset?.addEventListener('change', event => { const map = {soft:96,balanced:108,strong:120}; applyBrightness(map[event.currentTarget.value] || 108); });

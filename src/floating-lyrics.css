@@ -118,3 +118,90 @@ body[data-theme="purple"] .floating-current::before{
   font-size:clamp(13px,calc(21px * var(--fl-overlay-scale) * var(--fl-user-font-scale)),42px)!important;
 }
 .floating-root.compact .floating-graph{top:clamp(20px,calc(26px * var(--fl-overlay-scale)),42px);bottom:1px}
+
+
+/* ===== DEEP-ECHO 2.3 preview: resize-safe animated seek bar =====
+   This is deliberately presentation-only: it does not alter lyric timing or graph audio. */
+.floating-progress{position:absolute;z-index:4;left:clamp(10px,calc(15px * var(--fl-overlay-scale)),26px);right:clamp(10px,calc(15px * var(--fl-overlay-scale)),26px);bottom:clamp(4px,calc(7px * var(--fl-overlay-scale)),12px);display:grid;grid-template-columns:auto minmax(80px,1fr) auto;align-items:center;gap:clamp(6px,calc(8px * var(--fl-overlay-scale)),13px);height:18px;-webkit-app-region:no-drag;pointer-events:auto}
+.floating-progress-time{min-width:34px;font-size:clamp(8px,calc(9px * var(--fl-overlay-scale)),12px);font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--fl-text) 72%,transparent);text-shadow:0 1px 5px rgba(0,0,0,.65)}
+.floating-progress-time:last-child{text-align:right}
+.floating-progress-track{position:relative;height:5px;border-radius:999px;background:rgba(255,255,255,.15);box-shadow:inset 0 1px 2px rgba(0,0,0,.5),0 0 10px color-mix(in srgb,var(--fl-accent) 8%,transparent);overflow:visible}
+.floating-progress-track>i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:inherit;background:linear-gradient(90deg,color-mix(in srgb,var(--fl-accent) 78%,white 22%),var(--fl-accent));box-shadow:0 0 7px color-mix(in srgb,var(--fl-accent) 58%,transparent),0 0 15px color-mix(in srgb,var(--fl-accent) 20%,transparent);transition:width .08s linear;overflow:hidden}
+.floating-progress-track>i::after{content:"";position:absolute;inset:-2px -26px -2px auto;width:36px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.82),transparent);filter:blur(1px);animation:flSeekShimmer 1.85s linear infinite}
+@keyframes flSeekShimmer{0%{transform:translateX(-180%);opacity:.2}40%{opacity:.8}100%{transform:translateX(180%);opacity:.18}}
+#floatingSeek{position:absolute;inset:-7px 0;width:100%;height:18px;margin:0;opacity:.001;cursor:pointer;-webkit-app-region:no-drag}
+.floating-progress-track::after{content:"";position:absolute;top:50%;left:var(--fl-progress,0%);width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%);background:var(--fl-text);box-shadow:0 0 8px var(--fl-accent);opacity:.82;pointer-events:none;transition:left .08s linear}
+.floating-graph{bottom:clamp(16px,calc(20px * var(--fl-overlay-scale)),30px)}
+.floating-root.compact .floating-progress{left:10px;right:10px;bottom:4px;grid-template-columns:minmax(70px,1fr);height:13px}
+.floating-root.compact .floating-progress-time{display:none}
+.floating-root.compact .floating-progress-track{height:4px}
+.floating-root.compact .floating-graph{bottom:14px}
+@media(max-width:700px){.floating-drag>span{display:none}.floating-drag{justify-content:flex-end}.floating-actions{gap:2px}.floating-progress{left:9px;right:9px;grid-template-columns:minmax(70px,1fr)}.floating-progress-time{display:none}}
+@media(max-height:122px){.floating-next{display:none}.floating-current{margin-top:2px!important}.floating-graph{top:26px}.floating-progress{bottom:3px}}
+@media(prefers-reduced-motion:reduce){.floating-progress-track>i::after{animation:none!important}.floating-progress-track>i,.floating-progress-track::after{transition:none!important}}
+
+
+/* ===== DEEP-ECHO 2.3 V2: White-theme Floating Lyrics skin =====
+   Presentation-only. Keeps overlay transparency, lyric timing, seeking and audio graph logic untouched. */
+body[data-theme="light"] .floating-root{
+  --fl-accent:#b78645;
+  --fl-text:#33271b;
+  color:#33271b;
+  border-color:rgba(177,129,63,.42);
+  background:
+    linear-gradient(135deg,rgba(255,253,248,.88),rgba(245,239,228,.76) 55%,rgba(255,255,255,.70));
+  backdrop-filter:blur(16px) saturate(1.04);
+  box-shadow:0 10px 28px rgba(58,45,28,.18),0 0 20px rgba(190,145,77,.12);
+}
+body[data-theme="light"] .floating-drag{
+  color:#3f352b;
+  text-shadow:0 1px 2px rgba(255,255,255,.82);
+}
+body[data-theme="light"] .floating-actions button{
+  color:#3b3025;
+  border-color:rgba(151,112,62,.16);
+  background:rgba(255,255,255,.58);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.72);
+}
+body[data-theme="light"] .floating-actions button:hover{
+  background:rgba(238,224,201,.78);
+  border-color:rgba(177,129,63,.42);
+}
+body[data-theme="light"] .floating-actions button.active{
+  background:rgba(218,190,146,.50);
+  border-color:rgba(177,129,63,.58);
+  box-shadow:0 0 12px rgba(177,129,63,.18),inset 0 1px 0 rgba(255,255,255,.64);
+}
+body[data-theme="light"] .floating-current{
+  color:#3a2b1c;
+  -webkit-text-fill-color:#3a2b1c;
+  animation:flWhiteThemeBreathe 2.2s ease-in-out infinite;
+}
+body[data-theme="light"] .floating-next{
+  color:#5e5144;
+  opacity:.66;
+  text-shadow:0 1px 2px rgba(255,255,255,.72);
+}
+body[data-theme="light"] .floating-current::before{
+  background-image:
+    radial-gradient(circle,rgba(190,145,77,.60) 0 1px,transparent 1.7px),
+    radial-gradient(circle,rgba(118,95,66,.24) 0 .8px,transparent 1.5px)!important;
+  background-size:37px 33px,53px 47px!important;
+}
+body[data-theme="light"] .floating-progress-track{
+  background:rgba(84,68,49,.17);
+  box-shadow:inset 0 1px 2px rgba(76,59,39,.20),0 0 9px rgba(183,134,69,.10);
+}
+body[data-theme="light"] .floating-progress-time{
+  color:rgba(63,53,43,.76);
+  text-shadow:0 1px 2px rgba(255,255,255,.76);
+}
+body[data-theme="light"] .floating-progress-track::after{
+  background:#fff8ec;
+  border:1px solid rgba(151,112,62,.32);
+  box-shadow:0 0 7px rgba(183,134,69,.42);
+}
+@keyframes flWhiteThemeBreathe{
+  0%,100%{text-shadow:0 1px 2px rgba(255,255,255,.96),0 0 8px rgba(183,134,69,.16);filter:brightness(1)}
+  50%{text-shadow:0 1px 2px rgba(255,255,255,.98),0 0 13px rgba(183,134,69,.30);filter:brightness(1.035)}
+}

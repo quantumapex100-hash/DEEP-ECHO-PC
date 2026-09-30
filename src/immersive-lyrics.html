@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DEEP-ECHO Immersive Lyrics</title>
+  <link rel="stylesheet" href="immersive-lyrics.css">
+</head>
+<body data-theme="golden">
+  <div id="immersiveLyricsRoot" class="immersive-lyrics-root">
+    <canvas id="immersiveLyricsVisualizer" class="immersive-lyrics-visualizer" aria-hidden="true"></canvas>
+    <div class="immersive-lyrics-glow" aria-hidden="true"></div>
+
+    <header class="immersive-lyrics-header">
+      <div class="immersive-lyrics-heading">
+        <span class="immersive-lyrics-kicker">FLOATING IMMERSIVE LYRICS</span>
+        <strong id="immersiveLyricsSong">DEEP-ECHO Lyrics</strong>
+        <span id="immersiveLyricsArtist" class="immersive-lyrics-artist"></span>
+      </div>
+      <div class="immersive-lyrics-header-actions">
+        <button id="immersiveLyricsVisualizerBtn" type="button" aria-pressed="true" title="Theme visualizer ON/OFF">⌁</button>
+        <button id="immersiveLyricsOnlyBtn" type="button" aria-pressed="false" title="Only Lyrics mode">Aa</button>
+        <button id="immersiveLyricsSettingsBtn" type="button" aria-expanded="false" title="Immersive Lyrics settings">⚙</button>
+        <button id="immersiveLyricsClickThroughBtn" type="button" aria-pressed="false" title="Click-through OFF">↗</button>
+        <button id="immersiveLyricsCloseBtn" type="button" title="Close" aria-label="Close Immersive Lyrics">×</button>
+      </div>
+    </header>
+
+    <section id="immersiveLyricsScroller" class="immersive-lyrics-scroller" aria-label="Synced lyrics">
+      <div id="immersiveLyricsLines" class="immersive-lyrics-lines">
+        <p class="immersive-lyrics-placeholder">Play a song to see synced lyrics here.</p>
+      </div>
+    </section>
+
+    <section id="immersiveLyricsSettings" class="immersive-lyrics-settings" aria-hidden="true">
+      <div class="immersive-settings-title"><strong>Overlay settings</strong><span>Independent from Floating Lyrics</span></div>
+      <label>UI transparency <output id="immersivePanelOpacityValue">72%</output><input id="immersivePanelOpacity" type="range" min="0" max="95" step="1" value="72"></label>
+      <label>Lyrics opacity <output id="immersiveLyricsOpacityValue">100%</output><input id="immersiveLyricsOpacity" type="range" min="35" max="100" step="1" value="100"></label>
+      <label>Lyrics size <output id="immersiveLyricsSizeValue">100%</output><input id="immersiveLyricsSize" type="range" min="80" max="150" step="1" value="100"></label>
+      <div class="immersive-settings-row">
+        <button id="immersiveSettingsVisualizer" type="button" aria-pressed="true">Visualizer ON</button>
+        <button id="immersiveSettingsOnly" type="button" aria-pressed="false">Only Lyrics OFF</button>
+      </div>
+      <p class="immersive-settings-note">Panel stays locked to the right edge. Resize its left edge to make it wider or narrower.</p>
+    </section>
+
+    <footer class="immersive-lyrics-player">
+      <div class="immersive-progress-row">
+        <span id="immersiveProgressCurrent">0:00</span>
+        <div class="immersive-progress-track">
+          <i id="immersiveProgressFill"></i>
+          <input id="immersiveLyricsSeek" type="range" min="0" max="1" step="0.05" value="0" aria-label="Seek song">
+        </div>
+        <span id="immersiveProgressDuration">0:00</span>
+      </div>
+      <div class="immersive-player-controls">
+        <button id="immersiveBack10Btn" type="button" title="Back 10 seconds">↶<small>10</small></button>
+        <button id="immersivePrevBtn" type="button" title="Previous">◀</button>
+        <button id="immersivePlayBtn" class="immersive-play-button" type="button" title="Play / Pause">▶</button>
+        <button id="immersiveNextBtn" type="button" title="Next">▶</button>
+        <button id="immersiveForward10Btn" type="button" title="Forward 10 seconds">↷<small>10</small></button>
+      </div>
+    </footer>
+
+    <button id="immersiveOnlyExit" class="immersive-only-exit" type="button" title="Exit Only Lyrics mode">UI</button>
+  </div>
+  <script src="../lib/lyrics-timeline.js"></script>
+  <script src="immersive-lyrics.js"></script>
+</body>
+</html>
