@@ -2079,6 +2079,11 @@ async function requestVisualizerLocalRecovery(reason = 'zero-pcm') {
       try { audioPlayer.currentTime = Math.min(resumeAt, Math.max(0, audioPlayer.duration - .15)); } catch (_) {}
     }
     await resumeAudioAnalyser(true);
+    // Re-arm both visualizer loops immediately after the source swap. The play event
+    // normally does this too, but an explicit restart keeps recovery reliable when
+    // Chromium preserves the playing state without emitting a fresh play event.
+    startLyricsVisualizer();
+    startAudioEnergyTicker();
     if (shouldResume) { try { await audioPlayer.play(); } catch (_) {} }
     console.debug?.('[visualizer] local PCM recovery active:', reason);
   } catch (error) {
