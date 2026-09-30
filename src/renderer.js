@@ -1577,8 +1577,14 @@ loopBtn.addEventListener('click', () => {
   loopMode = loopMode === 'off' ? 'all' : loopMode === 'all' ? 'one' : 'off';
   persistQueue(); renderQueue(); updateQueueControls(); prefetchNextQueued();
 });
-queueToggleBtn.addEventListener('click', () => queuePanel.classList.toggle('hidden'));
-queueCloseBtn.addEventListener('click', () => queuePanel.classList.add('hidden'));
+function setQueuePanelOpen(open){
+  if(!queuePanel)return;
+  queuePanel.classList.toggle('hidden',!open);
+  queuePanel.setAttribute('aria-hidden',String(!open));
+}
+queueToggleBtn.addEventListener('click', () => setQueuePanelOpen(queuePanel.classList.contains('hidden')));
+queueCloseBtn.addEventListener('click', () => setQueuePanelOpen(false));
+window.addEventListener('keydown',event=>{if(event.key==='Escape'&&!queuePanel?.classList.contains('hidden'))setQueuePanelOpen(false);});
 clearQueueBtn.addEventListener('click', clearQueue);
 
 // Main player can collapse to a slim arrow handle and expands without disturbing playback.
@@ -1660,6 +1666,8 @@ async function playLocal(song, requestId) {
   showPlayLoading(100, 'Starting playback', song.title);
   // Main-process URL handles spaces, # and Unicode Windows filenames.
   const filePath = song.filepath ? song.filepath.replace(/\\/g, '/') : '';
+  visualizerLocalRecoverySongId = '';
+  visualizerLocalRecoveryPending = false;
   audioPlayer.src = song.streamUrl || song.fileUrl || 'file:///' + filePath.split('/').map((part, index) => index === 0 ? part : encodeURIComponent(part)).join('/');
   audioAnalyserMediaKey = ''; // force a fresh capture stream for the new media resource.
   resetVisualizerSignalState();
@@ -1674,6 +1682,9 @@ async function playLocal(song, requestId) {
   try {
     await audioPlayer.play();
     if (requestId !== playRequest) return;
+    await resumeAudioAnalyser(true);
+    startLyricsVisualizer();
+    startAudioEnergyTicker();
     smartScheduleSecondaryPlayback(currentSong, requestId, 420);
     addRecentlyPlayed(song);
     showPlayLoading(100, 'Playing', song.title);
@@ -1886,6 +1897,9 @@ let audioAnalyserMediaKey = '';
 let visualizerReconnectPending = false;
 let visualizerLastReconnectAt = 0;
 let visualizerSignalMisses = 0;
+let visualizerReconnectAttempts = 0;
+let visualizerLocalRecoveryPending = false;
+let visualizerLocalRecoverySongId = '';
 let visualizerVocalState = 0;
 let visualizerVocalTransient = 0;
 let visualizerFrequencyData = null;
@@ -1957,6 +1971,7 @@ function getAudioAnalyserMediaKey() {
 function resetVisualizerSignalState() {
   visualizerZeroFrames = 0;
   visualizerSignalMisses = 0;
+  visualizerReconnectAttempts = 0;
   visualizerLastReadAt = -1;
   visualizerAudioSnapshot = null;
   visualizerPrevSpectrum?.fill?.(0);
@@ -2026,20 +2041,71 @@ async function resumeAudioAnalyser(forceReconnect = false) {
   } catch (_) {}
 }
 
+function visualizerSurfaceIsVisible() {
+  const lyricsView = document.getElementById('lyricsView');
+  const immersive = document.getElementById('immersivePlayer');
+  return !!lyricsView?.classList.contains('active') || (!!immersive && !immersive.classList.contains('hidden'));
+}
+
+async function requestVisualizerLocalRecovery(reason = 'zero-pcm') {
+  if (visualizerLocalRecoveryPending || !visualizerSurfaceIsVisible()) return;
+  if (!currentSong?.id || !currentSong?.streamUrl || currentSong?.fileUrl || currentSong?.filepath) return;
+  if (!window.echoAPI?.prepareCompatiblePlayback) return;
+  const expectedId = String(currentSong.id);
+  // One background materialization per track. Playback keeps running while it is prepared.
+  if (visualizerLocalRecoverySongId === expectedId) return;
+  visualizerLocalRecoveryPending = true;
+  visualizerLocalRecoverySongId = expectedId;
+  try {
+    const fallback = await window.echoAPI.prepareCompatiblePlayback(normalizeSong(currentSong));
+    if (!fallback?.success || !fallback.fileUrl || String(currentSong?.id || '') !== expectedId) return;
+    const shouldResume = !audioPlayer.paused && !audioPlayer.ended;
+    const resumeAt = Math.max(0, Number(audioPlayer.currentTime || 0));
+    // Switch only after the local compatibility audio is fully ready. This gives Chromium
+    // an origin-safe PCM path, which makes captureStream reliable for every track.
+    audioPlayer.src = fallback.fileUrl;
+    audioAnalyserMediaKey = '';
+    currentSong = { ...currentSong, filepath:fallback.filepath || '', fileUrl:fallback.fileUrl, streamUrl:'' };
+    resetVisualizerSignalState();
+    await new Promise(resolve => {
+      if (audioPlayer.readyState >= 1) return resolve();
+      let done = false;
+      const finish = () => { if (done) return; done = true; clearTimeout(timer); audioPlayer.removeEventListener('loadedmetadata', finish); resolve(); };
+      const timer = setTimeout(finish, 1800);
+      audioPlayer.addEventListener('loadedmetadata', finish, { once:true });
+      try { audioPlayer.load(); } catch (_) {}
+    });
+    if (Number.isFinite(audioPlayer.duration) && audioPlayer.duration > 0) {
+      try { audioPlayer.currentTime = Math.min(resumeAt, Math.max(0, audioPlayer.duration - .15)); } catch (_) {}
+    }
+    await resumeAudioAnalyser(true);
+    if (shouldResume) { try { await audioPlayer.play(); } catch (_) {} }
+    console.debug?.('[visualizer] local PCM recovery active:', reason);
+  } catch (error) {
+    console.debug?.('[visualizer] local PCM recovery skipped:', error?.message || error);
+  } finally {
+    visualizerLocalRecoveryPending = false;
+  }
+}
+
 function requestVisualizerReconnect(reason = 'signal-lost') {
   const now = performance.now();
-  if (visualizerReconnectPending || now - visualizerLastReconnectAt < 1400) return;
+  if (visualizerReconnectPending || now - visualizerLastReconnectAt < 1100) return;
   visualizerReconnectPending = true;
   visualizerLastReconnectAt = now;
+  visualizerReconnectAttempts++;
   Promise.resolve().then(async () => {
     try {
       await resumeAudioAnalyser(true);
       console.debug?.('[visualizer] capture reconnected:', reason);
+      // captureStream can expose a silent track for some remote googlevideo resources.
+      // After two clean recaptures still produce zero PCM, prepare an origin-safe local
+      // compatibility source in the background and preserve the exact play position.
+      if (visualizerReconnectAttempts >= 2) requestVisualizerLocalRecovery(reason);
     } catch (_) {}
     visualizerReconnectPending = false;
   });
 }
-
 function readAudioEnergy() {
   const now = performance.now();
   // drawLyricsVisualizer + the background ticker can request the same frame.  Cache it
@@ -2101,6 +2167,7 @@ function readAudioEnergy() {
     const vocalTarget = clamp01(Math.pow(vocalRaw, .76) * 1.24 + vocalContrast * .72 + visualizerVocalTransient * .13);
     visualizerVocalState = visualizerSmooth(visualizerVocalState, vocalTarget, .54, .085);
     hasSignal = rms > .0025 || Math.max(...Object.values(raw)) > .008;
+    if (hasSignal) visualizerReconnectAttempts = 0;
     visualizerZeroFrames = hasSignal ? 0 : visualizerZeroFrames + 1;
     visualizerSignalMisses = hasSignal ? 0 : visualizerSignalMisses + 1;
     if (!hasSignal && visualizerSignalMisses > 38) {
@@ -3995,11 +4062,13 @@ function smartRebuildImmersiveLyrics(){
   if(!immersiveLyricsBody||!lyricsBody)return;
   immersiveLyricsBody.innerHTML=lyricsBody.innerHTML;
   immersiveLyricsBody.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'));
+  if(!smartWordByWordEnabled)smartRestoreLineOnlyLyrics(immersiveLyricsBody);
   smartImmersiveLastLyric=-2;
   smartSyncImmersiveLyricsState(true);
 }
 function smartUpdateImmersiveKaraoke(){
   if(!immersiveLyricsBody||!lyricLines.length)return;
+  if(!smartWordByWordEnabled){smartRestoreLineOnlyLyrics(immersiveLyricsBody);return;}
   smartPaintWordState(immersiveLyricsBody,lyricsPlaybackClock());
 }
 function smartSyncImmersiveLyricsState(force=false){
@@ -4147,12 +4216,32 @@ function smartRefreshWordByWordControl(){
   if(wordByWordToggle){wordByWordToggle.setAttribute('aria-pressed',String(smartWordByWordEnabled));wordByWordToggle.classList.toggle('active',smartWordByWordEnabled);}if(wordByWordState)wordByWordState.textContent=smartWordByWordEnabled?'ON':'OFF';document.body.classList.toggle('word-by-word-off',!smartWordByWordEnabled);
   if(wordByWordToggle&&smartWordByWordEnabled){const exact=!!lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]');wordByWordToggle.title=exact?'Word by Word ON · exact caption timing available':'Word by Word ON · exact word timing unavailable for this track, so safe line sync is used';}
 }
+function smartRestoreLineOnlyLyrics(root = lyricsBody){
+  if(!root)return;
+  root.querySelectorAll('.lyric-line[data-line]').forEach(line=>{
+    if(line.querySelector('.karaoke-word')){
+      const text=line.textContent||'';
+      line.textContent=text;
+    }
+    delete line.dataset.wordTiming;
+  });
+}
 function smartSetWordByWord(enabled,{announce=false}={}){
   smartWordByWordEnabled=enabled!==false;localStorage.setItem(WORD_BY_WORD_KEY,String(smartWordByWordEnabled));smartRefreshWordByWordControl();
-  if(smartWordByWordEnabled){smartPrepareKaraokeWords();smartUpdateKaraoke();}else{lyricsBody?.querySelectorAll('.karaoke-word').forEach(word=>word.classList.remove('lit','word-current'));immersiveLyricsBody?.querySelectorAll('.karaoke-word').forEach(word=>word.classList.remove('lit','word-current'));}
-  if(announce)showToast(smartWordByWordEnabled?(lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]')?'Word by Word ON · exact timing':'Word by Word ON · exact word timing unavailable, line sync active'):'Word by Word OFF · line-by-line lyrics');
+  if(smartWordByWordEnabled){
+    smartPrepareKaraokeWords();smartUpdateKaraoke();
+  }else{
+    // True line-by-line mode: restore one clean text node per line instead of leaving
+    // dim karaoke spans behind. This also prevents theme CSS from making the line blurry.
+    smartRestoreLineOnlyLyrics(lyricsBody);
+    if(typeof smartRebuildImmersiveLyrics==='function')smartRebuildImmersiveLyrics();
+    smartRestoreLineOnlyLyrics(immersiveLyricsBody);
+    syncLyrics(true);
+  }
+  if(announce)showToast(smartWordByWordEnabled?(lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]')?'Word by Word ON · exact timing':'Word by Word ON · exact word timing unavailable, line sync active'):'Word by Word OFF · clean line-by-line lyrics');
 }
 function smartPrepareKaraokeWords(){
+  if(!smartWordByWordEnabled){smartRestoreLineOnlyLyrics(lyricsBody);smartRefreshWordByWordControl();return;}
   const exact=smartExactWordTimings();lyricsBody?.querySelectorAll('.lyric-line[data-line]').forEach((line,index)=>{if(!line.querySelector('.karaoke-word')){const text=line.textContent||'';line.textContent='';const parts=text.split(/(\s+)/);parts.forEach(part=>{if(/^\s+$/.test(part)){line.appendChild(document.createTextNode(part));return;}const span=document.createElement('span');span.className='karaoke-word';span.textContent=part;line.appendChild(span);});}smartAssignWordTimes(line,index,[...line.querySelectorAll('.karaoke-word')],exact);});smartRefreshWordByWordControl();smartUpdateKaraoke();
 }
 function smartPaintWordState(root,t){

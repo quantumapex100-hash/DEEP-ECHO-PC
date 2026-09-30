@@ -7,7 +7,7 @@ const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
 const { getLyrics, withScriptVariants, isExplicitInstrumentalSong, scriptProfile } = require('./lib/lyrics');
 const { getYouTubeLyrics, alignSyncedLyricsToCaptions } = require('./lib/youtube-captions');
-const { runTransfer } = require('./lib/transfer');
+const { runTransfer, downloadDirectAudio } = require('./lib/transfer');
 const { transcribeSong } = require('./lib/auto-transcribe');
 const { runYtDlpSmart, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
 const util = require('util');
@@ -733,14 +733,36 @@ ipcMain.handle('prepare-compatible-playback', async (_event, song) => {
     return { success:false, errorCode: bot ? 'YOUTUBE_BOT_CHECK' : (err?.code || ''), error: err?.message || 'Compatibility playback failed.' };
   }
 });
-function runDownloadWithProgress(event, song, outputTemplate) {
+async function runDownloadWithProgress(event, song, outputTemplate) {
   const controller = new AbortController(); downloadControllers.set(song.id, controller);
   const quality = song.downloadQuality || downloadQuality;
-  downloadJobs.set(song.id, {song, id:song.id, percent:0, status:'Downloading', quality});
-  return runTransfer(YTDLP_PATH, song, outputTemplate, value => {
+  const report = value => {
     downloadJobs.set(song.id, {...downloadJobs.get(song.id), ...value, status:'Downloading'});
     sendProgress(event, 'download-progress', {id:song.id,...value,status:'Downloading'});
-  }, undefined, {signal:controller.signal, quality}).finally(()=>downloadControllers.delete(song.id));
+  };
+  downloadJobs.set(song.id, {song, id:song.id, percent:0, status:'Downloading', quality});
+  try {
+    try {
+      await runTransfer(YTDLP_PATH, song, outputTemplate, report, undefined, {
+        signal:controller.signal, quality, browserAuth:readYouTubeAccess(), allowFallbackClients:true
+      });
+      return;
+    } catch (error) {
+      const recoverable = error?.code === 'YOUTUBE_BOT_CHECK' || error?.code === 'YOUTUBE_ACCESS_403' || isBotChallenge(error);
+      if (!recoverable || controller.signal.aborted) throw error;
+
+      // yt-dlp extraction can be blocked while the same Android-resolved audio stream still
+      // plays normally. Reuse that proven playback path and save the media bytes directly.
+      // This avoids a second verification hit and does not change normal successful downloads.
+      sendProgress(event, 'download-progress', { id:song.id, percent:0, status:'Recovering' });
+      const streamQuality = quality === 'small' ? 'data' : quality === 'balanced' ? 'medium' : 'high';
+      const streamUrl = await resolveStreamUrl(song, streamQuality);
+      await downloadDirectAudio(streamUrl, outputTemplate, report, { signal:controller.signal });
+      console.log('[download] recovered from resolved playback stream');
+    }
+  } finally {
+    downloadControllers.delete(song.id);
+  }
 }
 
 ipcMain.handle('smart-cache-song', async (_event, song) => {
@@ -809,10 +831,18 @@ ipcMain.handle('download-song', async (event, song) => {
     console.log('[download] success:', filepath);
     return { success: true, alreadyExists: false, song: entry };
   } catch (err) {
-    downloadJobs.set(song.id,{...downloadJobs.get(song.id),song,status:err.message==='Cancelled'?'Cancelled':'Failed',error:err.message});
-    console.error('[download] FAILED:', err.message);
-    event.sender.send('download-progress', { id: song && song.id, percent: 0, status: 'Failed' });
-    return { success: false, error: err.message };
+    const cancelled = err?.message === 'Cancelled';
+    const accessBlocked = !cancelled && (err?.code === 'YOUTUBE_BOT_CHECK' || err?.code === 'YOUTUBE_ACCESS_403' || isBotChallenge(err));
+    const access = readYouTubeAccess();
+    const error = accessBlocked
+      ? (access.enabled
+          ? 'YouTube verification ne download ko rok diya. DeepEcho ne Android client, direct playback-stream save aur browser login fallback tino try kiye. Browser me YouTube login confirm karke ek baar retry karo.'
+          : 'YouTube verification ne anonymous download ko rok diya. DeepEcho ne Android client aur direct playback-stream save try kiya; zarurat pade to Settings > YouTube Access me logged-in browser enable karke retry karo.')
+      : (err?.message || 'Download failed.');
+    downloadJobs.set(song.id,{...downloadJobs.get(song.id),song,status:cancelled?'Cancelled':'Failed',error});
+    console.error('[download] FAILED:', error);
+    event.sender.send('download-progress', { id: song && song.id, percent: 0, status: cancelled ? 'Cancelled' : 'Failed' });
+    return { success: false, errorCode: accessBlocked ? (err?.code || 'YOUTUBE_BOT_CHECK') : (err?.code || ''), needsBrowserAuth: accessBlocked && !access.enabled, error };
   }
 });
 
@@ -828,7 +858,7 @@ ipcMain.handle('set-window-opacity', (event, value) => {
 
 // Cache successful lyrics for offline use. v9 invalidates v8 timelines that may have
 // collapsed legitimate short/prefix English lines or rapid-fired grouped timestamps.
-const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v9.json');
+const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v10.json');
 const lyricsControllers = new Map();
 const lyricsTimingControllers = new Map();
 
@@ -933,7 +963,7 @@ ipcMain.handle('get-lyrics', async (event, song) => {
   const canAutoTranscribe = !!song.streamUrl || (!!song.filepath && fs.existsSync(song.filepath)) || canUseVideoInfo;
   const [catalogResult, youtube] = await Promise.all([
     getLyrics(song),
-    canUseVideoInfo ? getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, { signal, browserAuth: readYouTubeAccess() }) : Promise.resolve(null)
+    canUseVideoInfo ? getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, { signal, browserAuth: readYouTubeAccess(), tempRoot: path.join(cacheDir, 'lyrics-captions') }) : Promise.resolve(null)
   ]);
   if (signal.aborted) return { cancelled: true };
   let result = catalogResult || {};

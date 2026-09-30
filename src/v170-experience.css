@@ -67,7 +67,14 @@ body.v170-lighting-on #v170MusicLighting{opacity:calc(.10 + var(--v170-energy)*.
   transform:scale(calc(.96 + var(--v170-vocal)*.08));
   filter:blur(calc(18px + var(--v170-treble)*18px));
 }
-.app,.queue-panel,.modal,.immersive-player,.command-palette{position:relative;z-index:1}
+/* v2.2.7 overlay positioning regression fix.
+   Only the app shell belongs in document flow. Queue/modal/immersive/command surfaces
+   keep their base fixed positioning; v1.7.0 accidentally changed all of them to relative. */
+.app{position:relative;z-index:1}
+.queue-panel{position:fixed;z-index:70}
+.modal{position:fixed}
+.immersive-player{position:fixed;z-index:10020}
+.command-palette{position:fixed;z-index:11000}
 
 /* v1.7.2 cursor isolation: the theme cursor must stay viewport-fixed above every app layer. */
 .dinecho-live-cursor{position:fixed!important;z-index:2147483647!important;pointer-events:none!important}
@@ -107,5 +114,5 @@ body.v170-adaptive-pressure *{scroll-behavior:auto!important}
 /* v2.2.2 exact Word by Word mode. Safe fallback keeps ordinary line sync when exact timings are missing. */
 body.word-by-word-off .karaoke-word{color:inherit!important;text-shadow:inherit!important;opacity:inherit!important}
 .karaoke-word.word-current{color:var(--gold-bright);text-shadow:0 0 calc(12px + var(--lyric-vocal,0)*10px) color-mix(in srgb,var(--gold) 78%,transparent),0 0 30px color-mix(in srgb,var(--gold-bright) 24%,transparent);opacity:1}
-.lyric-line[data-word-timing="exact"] .karaoke-word:not(.lit){opacity:.72}
+body:not(.word-by-word-off) .lyric-line[data-word-timing="exact"] .karaoke-word:not(.lit){opacity:.72}
 .lyric-line.current[data-word-timing="exact"] .karaoke-word.word-current{filter:brightness(1.12)}

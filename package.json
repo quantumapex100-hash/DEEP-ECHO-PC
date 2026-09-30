@@ -1,7 +1,7 @@
 {
   "name": "deepeccho",
-  "version": "2.2.3",
-  "description": "DEEP-ECHO 2.2.3 - Playback recovery fix, steady lyrics and frequent update detection",
+  "version": "2.2.7",
+  "description": "DEEP-ECHO 2.2.7 - visualizer PCM recovery, clean line-by-line lyrics, queue overlay and immersive player repair",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",

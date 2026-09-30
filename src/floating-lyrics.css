@@ -68,3 +68,53 @@ body[data-theme="purple"] .floating-current::before{
   animation:fl169Rgb 2.2s linear infinite!important;
 }
 .floating-current{transition:transform .075s linear,filter .09s linear,text-shadow .09s linear!important}
+
+
+/* ===== DEEP-ECHO 2.2.7 final: resize-aware floating overlay =====
+   The user can resize the overlay freely; graph geometry and lyric typography scale
+   together instead of leaving a tiny graph/text inside a large window. */
+.floating-root{
+  --fl-overlay-scale:1;
+  --fl-user-font-scale:1;
+  border-radius:clamp(12px,calc(18px * var(--fl-overlay-scale)),30px);
+  padding:clamp(6px,calc(9px * var(--fl-overlay-scale)),17px) clamp(9px,calc(14px * var(--fl-overlay-scale)),25px) clamp(8px,calc(11px * var(--fl-overlay-scale)),20px);
+}
+.floating-drag{
+  gap:clamp(6px,calc(10px * var(--fl-overlay-scale)),18px);
+  font-size:clamp(9px,calc(11px * var(--fl-overlay-scale)),17px);
+}
+.floating-actions{gap:clamp(2px,calc(4px * var(--fl-overlay-scale)),7px)}
+.floating-actions button{
+  width:clamp(24px,calc(30px * var(--fl-overlay-scale)),45px);
+  height:clamp(23px,calc(27px * var(--fl-overlay-scale)),41px);
+  border-radius:clamp(7px,calc(9px * var(--fl-overlay-scale)),14px);
+}
+.floating-actions svg{width:clamp(12px,calc(15px * var(--fl-overlay-scale)),23px);height:clamp(12px,calc(15px * var(--fl-overlay-scale)),23px)}
+.floating-current{
+  margin-top:clamp(3px,calc(6px * var(--fl-overlay-scale)),11px);
+  font-size:clamp(14px,calc(25px * var(--fl-overlay-scale) * var(--fl-user-font-scale)),50px)!important;
+  line-height:clamp(1.04,calc(1.12 + (var(--fl-overlay-scale) - 1) * .025),1.18);
+  max-width:calc(100% - clamp(12px,calc(22px * var(--fl-overlay-scale)),38px));
+}
+.floating-next{
+  margin-top:clamp(2px,calc(3px * var(--fl-overlay-scale)),7px);
+  font-size:clamp(10px,calc(14px * var(--fl-overlay-scale) * var(--fl-user-font-scale)),28px)!important;
+  max-width:calc(100% - clamp(18px,calc(36px * var(--fl-overlay-scale)),56px));
+}
+.floating-graph{
+  left:clamp(2px,calc(4px * var(--fl-overlay-scale)),8px);
+  right:clamp(2px,calc(4px * var(--fl-overlay-scale)),8px);
+  top:clamp(24px,calc(32px * var(--fl-overlay-scale)),54px);
+  bottom:clamp(1px,calc(2px * var(--fl-overlay-scale)),5px);
+  width:auto;
+  height:auto;
+}
+.floating-root.compact{
+  border-radius:clamp(10px,calc(14px * var(--fl-overlay-scale)),22px);
+  padding:clamp(4px,calc(6px * var(--fl-overlay-scale)),10px) clamp(7px,calc(10px * var(--fl-overlay-scale)),18px);
+}
+.floating-root.compact .floating-current{
+  margin-top:clamp(2px,calc(4px * var(--fl-overlay-scale)),8px);
+  font-size:clamp(13px,calc(21px * var(--fl-overlay-scale) * var(--fl-user-font-scale)),42px)!important;
+}
+.floating-root.compact .floating-graph{top:clamp(20px,calc(26px * var(--fl-overlay-scale)),42px);bottom:1px}

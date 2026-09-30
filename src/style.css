@@ -665,7 +665,7 @@ body[data-theme="blood"] .hero-card {
   box-shadow: 0 0 80px rgba(52,204,255,.08);
 }
 .lyrics-scroll-panel { position: relative; z-index: 2; max-width: 980px; min-height: 760px; padding-top: 90px; padding-bottom: 180px; }
-.lyrics-view .lyric-line { backdrop-filter: blur(1.2px); }
+.lyrics-view .lyric-line { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .lyrics-view .lyric-line:not(.current) { text-shadow: 0 1px 10px color-mix(in srgb, var(--bg) 65%, transparent); }
 .setting-help {
   margin: 8px 0 0;
@@ -1099,6 +1099,7 @@ body.audio-is-playing .now-thumb { animation: nowArtBeat 2.2s ease-in-out infini
   body.audio-is-playing .now-thumb, .immersive-content > img { animation:none !important; }
 }
 .karaoke-word { transition: color .12s ease, text-shadow .12s ease, opacity .12s ease; }
+body.word-by-word-off .lyric-line .karaoke-word { opacity:1!important; color:inherit!important; -webkit-text-fill-color:currentColor!important; text-shadow:inherit!important; filter:none!important; }
 .karaoke-word.lit { color: var(--gold-bright); text-shadow: 0 0 12px color-mix(in srgb,var(--gold) 42%,transparent); }
 body.lyrics-theme-fx[data-theme="rgb"] .lyric-line.current .karaoke-word.lit { color:#fff; -webkit-text-fill-color:#fff; text-shadow:0 0 14px rgba(116,226,255,.7),0 0 25px rgba(255,73,206,.32); }
 body.lyrics-theme-fx[data-theme="love"] .lyric-line.current .karaoke-word.lit { color:#fff0fa; text-shadow:0 0 14px rgba(255,113,194,.72); }
@@ -1109,6 +1110,10 @@ body.lyrics-theme-fx[data-theme="love"] .lyric-line.current .karaoke-word.lit { 
 
 /* ===== Dinecho v1.4.1 polish: compact themes, readable EQ, reliable lyric sizing ===== */
 .theme-grid:not(.show-all-themes) .theme-option:nth-child(n+5) { display:none; }
+.theme-grid.show-all-themes { max-height:280px; overflow-y:auto; overscroll-behavior:contain; align-content:start; padding-right:6px; scrollbar-gutter:stable; }
+.theme-grid.show-all-themes .theme-option { min-height:112px; }
+.theme-grid.show-all-themes::-webkit-scrollbar { width:7px; }
+.theme-grid.show-all-themes::-webkit-scrollbar-thumb { background:color-mix(in srgb,var(--gold) 38%,var(--border)); border-radius:99px; }
 .theme-show-more { width:100%; margin-top:12px; min-height:42px; border-radius:11px; border:1px solid var(--border); background:linear-gradient(90deg,color-mix(in srgb,var(--panel-2) 88%,transparent),color-mix(in srgb,var(--gold) 7%,var(--panel-2))); color:var(--text); display:flex; align-items:center; justify-content:center; gap:8px; font-weight:700; cursor:pointer; }
 .theme-show-more:hover { border-color:color-mix(in srgb,var(--gold) 64%,var(--border)); box-shadow:0 0 20px color-mix(in srgb,var(--gold) 12%,transparent); }
 .theme-show-more-chevron { display:inline-block; font-size:18px; line-height:1; transition:transform .2s ease; }

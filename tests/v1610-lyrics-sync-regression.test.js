@@ -57,6 +57,6 @@ test('main and floating lyrics use the same timeline helper', () => {
   assert.match(floating, /DeepecchoLyricsTimeline\.normalizeTimeline/);
 });
 
-test('v9 lyric cache invalidates previously stored bad grouped timelines', () => {
-  assert.match(main, /lyrics-cache-v9\.json/);
+test('v10 lyric cache invalidates stale timing data after the lyrics recovery update', () => {
+  assert.match(main, /lyrics-cache-v10\.json/);
 });

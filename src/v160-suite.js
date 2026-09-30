@@ -116,7 +116,9 @@ function scheduleAutoGameMode(on){
   if(on){gameModeAutoTimer=setTimeout(()=>{if(cfg().gameAuto&&!cfg().gameMode&&!document.hasFocus()){gameModeAutoActive=true;applyGameMode(true,'background');}},650);}
   else if(gameModeAutoActive){gameModeAutoActive=false;applyGameMode(false,'background');}
 }
-window.addEventListener('blur',()=>scheduleAutoGameMode(true));
+// v2.2.7: losing focus is not the same as launching a game. The old blur hook could
+// freeze the visualizer simply by opening another desktop window or the snipping tool.
+// Automatic game mode now activates only when the document is genuinely hidden/minimized.
 window.addEventListener('focus',()=>scheduleAutoGameMode(false));
 document.addEventListener('visibilitychange',()=>scheduleAutoGameMode(document.hidden));
 function setOffset(v){v=Number(v)||0;save({lyricsOffset:v});window.deepecchoLyricsOffsetMs=v;$('v160OffsetLabel').textContent=`${v>0?'+':''}${v} ms`;}

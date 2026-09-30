@@ -15,6 +15,8 @@ let graphAudio = { energy:0, vocal:0, bass:0, treble:0, motion:0, aggression:0, 
 let graphDisplay = [];
 let graphPeaks = [];
 let graphRaf = 0;
+let userFontScale = 1;
+let overlayScale = 1;
 
 function normalizeFloatingLines(lines = []) {
   if (window.DeepecchoLyricsTimeline?.normalizeTimeline) return window.DeepecchoLyricsTimeline.normalizeTimeline(lines);
@@ -51,16 +53,27 @@ graphBtn?.addEventListener('click', () => applyGraphState(!graphEnabled, true));
 // Tell the main renderer whether high-rate real-audio graph packets are needed.
 queueMicrotask(() => window.echoAPI?.floatingLyricsAction?.(graphEnabled ? 'graphOn' : 'graphOff'));
 
+function applyOverlayScale() {
+  const rect = root.getBoundingClientRect();
+  // Scale against the original floating-player footprint. Area-based scaling reacts
+  // naturally whether the user changes width, height, or both without exploding text.
+  const areaScale = Math.sqrt(Math.max(1, rect.width * rect.height) / (760 * 150));
+  overlayScale = Math.max(.68, Math.min(1.85, areaScale));
+  root.style.setProperty('--fl-overlay-scale', overlayScale.toFixed(4));
+  root.style.setProperty('--fl-user-font-scale', Math.max(.8, Math.min(1.5, userFontScale)).toFixed(4));
+  return { rect, scale: overlayScale };
+}
 function resizeGraphCanvas() {
   if (!graphCanvas) return null;
-  const rect = graphCanvas.getBoundingClientRect();
+  const { rect, scale } = applyOverlayScale();
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   const w = Math.max(1, Math.round(rect.width * dpr));
   const h = Math.max(1, Math.round(rect.height * dpr));
   if (graphCanvas.width !== w || graphCanvas.height !== h) { graphCanvas.width = w; graphCanvas.height = h; }
-  return { rect, dpr, w, h };
+  return { rect, dpr, w, h, scale };
 }
 new ResizeObserver(() => resizeGraphCanvas()).observe(root);
+window.addEventListener('resize', resizeGraphCanvas);
 function graphSample(values, x) {
   if (!values?.length) return 0;
   const pos = Math.max(0, Math.min(values.length - 1, x * (values.length - 1)));
@@ -72,7 +85,7 @@ function drawFloatingGraph() {
   if (!graphEnabled || !graphCanvas) return;
   const size = resizeGraphCanvas(); if (!size) return;
   const ctx = graphCanvas.getContext('2d'); if (!ctx) return;
-  const {w,h,dpr,rect}=size; ctx.clearRect(0,0,w,h);
+  const {w,h,dpr,rect,scale:overlayGraphScale}=size; ctx.clearRect(0,0,w,h);
 
   // More width = more real FFT detail. No random/fake bins are generated.
   const points = Math.max(64, Math.min(280, Math.round(rect.width / 4.8)));
@@ -112,11 +125,11 @@ function drawFloatingGraph() {
 
   const accent = getComputedStyle(root).getPropertyValue('--fl-accent').trim() || '#8fdfff';
   const top = h * .14, bottom = h * .88, baseY = h * .72;
-  const amp = Math.max(10*dpr, h * (.34 + energy*.12 + vocal*.11 + hit*.08));
+  const amp = Math.max(10*dpr*overlayGraphScale, h * (.34 + energy*.12 + vocal*.11 + hit*.08));
 
   // Professional analyser grid / guides.
   ctx.save();
-  ctx.lineWidth=Math.max(.55*dpr,.7);
+  ctx.lineWidth=Math.max(.55*dpr*overlayGraphScale,.7);
   ctx.strokeStyle='rgba(255,255,255,.075)';
   ctx.globalAlpha=.65;
   for(let gy=0;gy<4;gy++){
@@ -129,7 +142,7 @@ function drawFloatingGraph() {
 
   // Spectrum bars behind the response curve, similar to pro audio analyzers.
   const barStride = rect.width > 1500 ? 2 : rect.width > 900 ? 3 : 4;
-  const barW = Math.max(1*dpr, (w/points)*barStride*.55);
+  const barW = Math.max(1*dpr*overlayGraphScale, (w/points)*barStride*.55);
   const barGrad = ctx.createLinearGradient(0,baseY-amp,0,baseY+10*dpr);
   barGrad.addColorStop(0, accent); barGrad.addColorStop(1,'rgba(255,255,255,0)');
   ctx.fillStyle=barGrad;
@@ -156,8 +169,8 @@ function drawFloatingGraph() {
     response.lineTo(pts.at(-1)[0],pts.at(-1)[1]);
   }
   ctx.lineJoin='round';ctx.lineCap='round';
-  ctx.strokeStyle=accent; ctx.globalAlpha=.17+energy*.10; ctx.lineWidth=4*dpr; ctx.filter=`blur(${2.1*dpr}px)`; ctx.stroke(response);
-  ctx.filter='none';ctx.globalAlpha=.72+energy*.18;ctx.lineWidth=Math.max(1*dpr,1.25*dpr);ctx.stroke(response);
+  ctx.strokeStyle=accent; ctx.globalAlpha=.17+energy*.10; ctx.lineWidth=4*dpr*overlayGraphScale; ctx.filter=`blur(${2.1*dpr*overlayGraphScale}px)`; ctx.stroke(response);
+  ctx.filter='none';ctx.globalAlpha=.72+energy*.18;ctx.lineWidth=Math.max(1*dpr*overlayGraphScale,1.25*dpr*overlayGraphScale);ctx.stroke(response);
 
   // Translucent area fill under the curve.
   const fill=new Path2D(response); fill.lineTo(w,baseY); fill.lineTo(0,baseY); fill.closePath();
@@ -170,7 +183,7 @@ function drawFloatingGraph() {
   for(let i=0;i<points;i+=peakStride){
     const pv=Math.pow(graphPeaks[i]||0,.82); if(pv<.08) continue;
     const x=(i/(points-1))*w, y=baseY-pv*amp;
-    ctx.globalAlpha=.28+pv*.42+hit*.16;ctx.beginPath();ctx.arc(x,y,Math.max(.65*dpr,1.05*dpr),0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=.28+pv*.42+hit*.16;ctx.beginPath();ctx.arc(x,y,Math.max(.65*dpr*overlayGraphScale,1.05*dpr*overlayGraphScale),0,Math.PI*2);ctx.fill();
   }
 
   // Thin mirrored trace adds depth and keeps the graph readable behind lyrics.
@@ -179,7 +192,7 @@ function drawFloatingGraph() {
     const x=(i/(points-1))*w, y=baseY+Math.pow(graphDisplay[i],.9)*amp*.22;
     if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
   }
-  ctx.globalAlpha=.12+motion*.07;ctx.lineWidth=.7*dpr;ctx.strokeStyle=accent;ctx.stroke();
+  ctx.globalAlpha=.12+motion*.07;ctx.lineWidth=.7*dpr*overlayGraphScale;ctx.strokeStyle=accent;ctx.stroke();
   ctx.restore();
 }
 drawFloatingGraph();
@@ -222,7 +235,8 @@ window.echoAPI?.onFloatingLyricsState?.((state = {}) => {
   if (Array.isArray(state.spectrum)) graphSpectrum = state.spectrum.map(v=>Math.max(0,Math.min(1,Number(v)||0)));
   if (state.audioGraph && typeof state.audioGraph === 'object') graphAudio = { ...graphAudio, ...state.audioGraph };
   clock = { baseTime: Number(state.playbackTime || 0), basePerf: performance.now(), playing: !!state.playing, rate: Number(state.playbackRate || 1) || 1 };
-  document.documentElement.style.fontSize = `${Math.max(.8, Math.min(1.5, Number(state.fontScale) || 1)) * 16}px`;
+  userFontScale = Math.max(.8, Math.min(1.5, Number(state.fontScale) || 1));
+  applyOverlayScale();
   renderSyncedLyrics();
 });
 
