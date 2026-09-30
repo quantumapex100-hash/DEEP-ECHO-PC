@@ -1,12 +1,6 @@
-name: Build and publish DEEP-ECHO Windows release
+name: Build and publish DEEP-ECHO 2.2 END
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_notes:
-        description: Short release notes shown on GitHub
-        required: false
-        default: Automated DEEP-ECHO release
   push:
     tags:
       - 'v*'
@@ -14,12 +8,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: deep-echo-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-release:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      RELEASE_REPO: windowsdaiyu-cyber/DEEP-ECHO-Releases
+      RELEASE_TITLE: 2.2 END
 
     steps:
       - name: Checkout source
@@ -32,22 +32,21 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
-      - name: Verify release token exists
+      - name: Verify release inputs
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
-            throw 'Missing RELEASE_TOKEN repository secret. Add a fine-grained token with Contents: Read and write access to DEEP-ECHO-Releases.'
+            throw 'Missing RELEASE_TOKEN repository secret.'
           }
-
-      - name: Verify tag matches package version
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
           $packageVersion = node -p "require('./package.json').version"
           $tagVersion = $env:GITHUB_REF_NAME.TrimStart('v')
           if ($packageVersion -ne $tagVersion) {
             throw "Tag v$tagVersion does not match package.json version $packageVersion"
           }
+          if ($packageVersion -ne '2.2.8') {
+            throw "2.2 END must ship as semantic version 2.2.8, found $packageVersion"
+          }
+          gh api "repos/$env:RELEASE_REPO" --jq '.full_name' | Out-Null
 
       - name: Cache Electron build tools
         uses: actions/cache@v6
@@ -75,18 +74,25 @@ jobs:
           }
           if (-not (Test-Path 'bin/yt-dlp.exe')) { throw 'yt-dlp download failed' }
 
-      - name: Run automated tests
+      - name: Run complete automated test suite
         run: npm test
 
-      - name: Build and publish release
+      - name: Build and publish installer
         run: npm run release
 
+      - name: Finalize GitHub release title and notes
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.2-END.md --latest
+          gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,isLatest,url,assets
 
-      - name: Upload build logs on failure
+      - name: Upload build diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: deep-echo-build-debug
+          name: deep-echo-2.2-end-build-debug
           path: |
             dist/**
             builder-debug.yml

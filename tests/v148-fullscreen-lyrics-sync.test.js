@@ -51,7 +51,7 @@ test('renderer uses media clock with tiny paint anticipation instead of old 180m
 });
 
 test('lyrics cache is bumped so old drifted timing is not reused',()=>{
-  assert.match(main,/lyrics-cache-v10\.json/);
+  assert.match(main,/lyrics-cache-v11\.json/);
   assert.match(main,/timingPrecision: 'youtube-aligned'/);
   assert.match(main,/timingPrecision: 'youtube-exact'/);
 });

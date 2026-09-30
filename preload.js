@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('echoAPI', {
   smartCacheClear: () => ipcRenderer.invoke('smart-cache-clear'),
   deleteSong: (id) => ipcRenderer.invoke('delete-song', id),
   getLyrics: (song) => ipcRenderer.invoke('get-lyrics', song),
+  upgradeLyricsCaptions: (song) => ipcRenderer.invoke('upgrade-lyrics-captions', song),
   syncPlainLyrics: (song, plainLyrics) => ipcRenderer.invoke('sync-plain-lyrics', song, plainLyrics),
   getYouTubeAccess: () => ipcRenderer.invoke('get-youtube-access'),
   setYouTubeAccess: (value) => ipcRenderer.invoke('set-youtube-access', value),

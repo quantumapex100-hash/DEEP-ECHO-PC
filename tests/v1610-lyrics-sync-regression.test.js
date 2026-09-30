@@ -58,5 +58,5 @@ test('main and floating lyrics use the same timeline helper', () => {
 });
 
 test('v10 lyric cache invalidates stale timing data after the lyrics recovery update', () => {
-  assert.match(main, /lyrics-cache-v10\.json/);
+  assert.match(main, /lyrics-cache-v11\.json/);
 });

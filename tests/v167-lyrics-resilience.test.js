@@ -52,5 +52,5 @@ test('floating lyrics normalize repeated lines and receive sub-second drift hear
 });
 
 test('old potentially bad lyric timing cache is invalidated',()=>{
-  assert.match(main,/lyrics-cache-v10\.json/);
+  assert.match(main,/lyrics-cache-v11\.json/);
 });

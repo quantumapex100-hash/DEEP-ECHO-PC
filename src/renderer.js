@@ -713,7 +713,7 @@ function playSongCollection(songs, label, meta = {}, button = null) {
   return startSingleSong(items[0], button, context);
 }
 
-function buildPlaylistCard({ title, subtitle = '', countText = '', thumbnail = '', iconText = 'PL', onOpen, onPlay }) {
+function buildPlaylistCard({ title, subtitle = '', countText = '', thumbnail = '', iconText = 'PL', onOpen, onPlay, onDelete = null, openLabel = 'Open' }) {
   const card = document.createElement('div');
   card.className = 'playlist-card smart-playlist-card';
   card.setAttribute('role', 'group');
@@ -742,13 +742,25 @@ function buildPlaylistCard({ title, subtitle = '', countText = '', thumbnail = '
   actions.className = 'playlist-card-actions';
   const openBtn = document.createElement('button');
   openBtn.className = 'playlist-open-btn';
-  openBtn.textContent = 'Open';
+  openBtn.textContent = openLabel;
   openBtn.title = 'Open playlist';
   const playBtn = document.createElement('button');
   playBtn.className = 'playlist-play-btn';
   playBtn.textContent = 'Play';
   playBtn.title = 'Play playlist';
   actions.append(openBtn, playBtn);
+  if (onDelete) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'playlist-delete-btn';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.title = 'Delete playlist';
+    deleteBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onDelete(deleteBtn);
+    });
+    actions.classList.add('has-delete');
+    actions.appendChild(deleteBtn);
+  }
   card.appendChild(actions);
 
   const open = (event) => {
@@ -793,7 +805,16 @@ function renderPlaylists() {
       countText: `${songs.length} song${songs.length === 1 ? '' : 's'}`,
       iconText: 'PL',
       onOpen: () => showPlaylist(name),
-      onPlay: (button) => playSongCollection(songs, name, { type: 'playlist', key: `playlist:${name}` }, button)
+      onPlay: (button) => playSongCollection(songs, name, { type: 'playlist', key: `playlist:${name}` }, button),
+      onDelete: () => {
+        if (!window.confirm(`Delete playlist \"${name}\"? Songs themselves will stay in Downloads/Library.`)) return;
+        const updated = getPlaylists();
+        delete updated[name];
+        savePlaylists(updated);
+        if (currentPlaylistName === name) currentPlaylistName = null;
+        renderPlaylists();
+        showToast(`Deleted playlist: ${name}`);
+      }
     });
     playlistCards.appendChild(card);
   });
@@ -935,6 +956,7 @@ function renderArtistPlaylistSection(grid, hint, songs, emptyText) {
       title: seed.title,
       subtitle: 'Artist playlist · Open to view songs',
       thumbnail: seed.thumbnail,
+      openLabel: 'Open Songs',
       onOpen: () => showArtistPlaylist(seed, 'home'),
       onPlay: (button) => playArtistPlaylist(seed, button)
     }));
@@ -2291,18 +2313,18 @@ function readAudioEnergy() {
 
 function getVisualizerThemeSpec(theme = document.body.dataset.theme || 'golden') {
   const specs = {
-    golden: { mode: 'sphere', h1: 38, h2: 49, h3: 30, glow: 'rgba(255,190,70,.34)', core: 'rgba(255,197,85,.18)', ray: 'rgba(255,191,73,', speed: 1.0, rays: 128 },
-    light: { mode: 'sphere', h1: 34, h2: 43, h3: 24, glow: 'rgba(184,132,54,.24)', core: 'rgba(213,164,84,.15)', ray: 'rgba(180,128,46,', speed: .85, rays: 112 },
-    dark: { mode: 'sphere', h1: 205, h2: 220, h3: 196, glow: 'rgba(160,190,225,.22)', core: 'rgba(159,187,219,.13)', ray: 'rgba(154,186,220,', speed: .82, rays: 120 },
-    purple: { mode: 'electric', h1: 265, h2: 282, h3: 244, glow: 'rgba(177,104,255,.34)', core: 'rgba(167,91,255,.18)', ray: 'rgba(177,110,255,', speed: 1.18, rays: 132 },
-    toxic: { mode: 'toxic', h1: 132, h2: 111, h3: 151, glow: 'rgba(72,255,118,.34)', core: 'rgba(61,255,105,.17)', ray: 'rgba(76,255,122,', speed: 1.28, rays: 144 },
-    blood: { mode: 'blood', h1: 350, h2: 2, h3: 338, glow: 'rgba(255,41,78,.38)', core: 'rgba(189,9,45,.22)', ray: 'rgba(235,35,69,', speed: .92, rays: 104 },
-    silver: { mode: 'sphere', h1: 205, h2: 216, h3: 194, glow: 'rgba(223,239,255,.34)', core: 'rgba(220,235,249,.17)', ray: 'rgba(219,237,255,', speed: .9, rays: 124 },
-    transparent: { mode: 'sphere', h1: 224, h2: 238, h3: 202, glow: 'rgba(185,204,255,.3)', core: 'rgba(180,201,255,.14)', ray: 'rgba(185,205,255,', speed: .88, rays: 120 },
-    fluids: { mode: 'fluid', h1: 190, h2: 278, h3: 157, glow: 'rgba(75,220,255,.34)', core: 'rgba(69,210,255,.15)', ray: 'rgba(80,220,255,', speed: 1.08, rays: 136 },
-    rgb: { mode: 'rgb', h1: 0, h2: 360, h3: 210, glow: 'rgba(114,215,255,.34)', core: 'rgba(255,255,255,.12)', ray: 'rgba(120,220,255,', speed: 1.42, rays: 168 },
-    love: { mode: 'love', h1: 330, h2: 395, h3: 285, glow: 'rgba(255,91,183,.38)', core: 'rgba(255,126,193,.16)', ray: 'rgba(255,100,190,', speed: 1.24, rays: 148 },
-    space: { mode: 'space', h1: 207, h2: 276, h3: 318, glow: 'rgba(84,170,255,.42)', core: 'rgba(168,111,255,.18)', ray: 'rgba(111,193,255,', speed: 1.12, rays: 156 }
+    golden: { mode: 'sphere', accent: 'golden', h1: 38, h2: 49, h3: 30, glow: 'rgba(255,190,70,.34)', core: 'rgba(255,197,85,.18)', ray: 'rgba(255,191,73,', speed: 1.0, rays: 128, glowGain: 1.12 },
+    light: { mode: 'sphere', accent: 'light', h1: 34, h2: 43, h3: 24, glow: 'rgba(184,132,54,.24)', core: 'rgba(213,164,84,.15)', ray: 'rgba(180,128,46,', speed: .85, rays: 112, glowGain: .92 },
+    dark: { mode: 'sphere', accent: 'dark', h1: 205, h2: 220, h3: 196, glow: 'rgba(160,190,225,.22)', core: 'rgba(159,187,219,.13)', ray: 'rgba(154,186,220,', speed: .82, rays: 120, glowGain: 1.02 },
+    purple: { mode: 'electric', accent: 'electric', h1: 265, h2: 282, h3: 244, glow: 'rgba(177,104,255,.34)', core: 'rgba(167,91,255,.18)', ray: 'rgba(177,110,255,', speed: 1.18, rays: 132, glowGain: 1.18 },
+    toxic: { mode: 'toxic', accent: 'toxic', h1: 132, h2: 111, h3: 151, glow: 'rgba(72,255,118,.34)', core: 'rgba(61,255,105,.17)', ray: 'rgba(76,255,122,', speed: 1.28, rays: 144, glowGain: 1.20 },
+    blood: { mode: 'blood', accent: 'blood', h1: 350, h2: 2, h3: 338, glow: 'rgba(255,41,78,.38)', core: 'rgba(189,9,45,.22)', ray: 'rgba(235,35,69,', speed: .92, rays: 104, glowGain: 1.22 },
+    silver: { mode: 'sphere', accent: 'silver', h1: 205, h2: 216, h3: 194, glow: 'rgba(223,239,255,.34)', core: 'rgba(220,235,249,.17)', ray: 'rgba(219,237,255,', speed: .9, rays: 124, glowGain: 1.04 },
+    transparent: { mode: 'sphere', accent: 'glass', h1: 224, h2: 238, h3: 202, glow: 'rgba(185,204,255,.3)', core: 'rgba(180,201,255,.14)', ray: 'rgba(185,205,255,', speed: .88, rays: 120, glowGain: 1.02 },
+    fluids: { mode: 'fluid', accent: 'fluid', h1: 190, h2: 278, h3: 157, glow: 'rgba(75,220,255,.34)', core: 'rgba(69,210,255,.15)', ray: 'rgba(80,220,255,', speed: 1.08, rays: 136, glowGain: 1.15 },
+    rgb: { mode: 'rgb', accent: 'rgb', h1: 0, h2: 360, h3: 210, glow: 'rgba(114,215,255,.34)', core: 'rgba(255,255,255,.12)', ray: 'rgba(120,220,255,', speed: 1.42, rays: 168, glowGain: 1.18 },
+    love: { mode: 'love', accent: 'love', h1: 330, h2: 395, h3: 285, glow: 'rgba(255,91,183,.38)', core: 'rgba(255,126,193,.16)', ray: 'rgba(255,100,190,', speed: 1.24, rays: 148, glowGain: 1.18 },
+    space: { mode: 'space', accent: 'space', h1: 207, h2: 276, h3: 318, glow: 'rgba(84,170,255,.42)', core: 'rgba(168,111,255,.18)', ray: 'rgba(111,193,255,', speed: 1.12, rays: 156, glowGain: 1.16 }
   };
   return specs[theme] || specs.golden;
 }
@@ -2387,8 +2409,40 @@ function drawThemeAccent(ctx, spec, cx, cy, sphereR, audio, dpr, safeOuterR = In
   const body = audio.lowMid * .18 + audio.mid * .28 + (audio.vocal || 0) * .54;
   const air = (audio.highMid + audio.treble) * .5;
   const phase = visualizerMusicPhase;
+  const accent = spec.accent || spec.mode;
 
-  if (spec.mode === 'rgb') {
+  if (accent === 'golden') {
+    ctx.save(); ctx.translate(cx,cy); ctx.globalCompositeOperation='lighter';
+    const count=22;
+    for(let i=0;i<count;i++){
+      const ratio=i/count,sample=visualizerSpectrumSample(ratio,audio),wave=visualizerWaveSample((ratio+.13)%1);
+      const a=ratio*Math.PI*2+visualizerAngle*.46+wave*hit*.09;
+      const r=safeR(sphereR*(1.08+kick*.035)+sample*(12+audio.aggression*22)*dpr,14*dpr);
+      const size=(1.0+sample*2.4+kick*1.5+air*.8)*dpr;
+      ctx.fillStyle=`hsla(${38+sample*18},100%,72%,${.20+sample*.48+hit*.14})`;
+      ctx.shadowColor='rgba(255,190,70,.92)'; ctx.shadowBlur=(7+sample*13+kick*8)*dpr;
+      ctx.save();ctx.translate(Math.cos(a)*r,Math.sin(a)*r);ctx.rotate(a+phase*.08);ctx.fillRect(-size/2,-size/2,size,size);ctx.restore();
+    }
+    ctx.restore();
+  } else if (accent === 'light') {
+    ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation='lighter';
+    for(let ring=0;ring<2;ring++){
+      ctx.beginPath();const pts=120;
+      for(let i=0;i<=pts;i++){const q=i/pts,a=q*Math.PI*2,wave=visualizerWaveSample((q+ring*.2)%1),sample=visualizerSpectrumSample(q,audio);const r=safeR(sphereR*(1.05+ring*.07)+wave*(2+body*5)*dpr+sample*7*dpr,10*dpr);i?ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r):ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r)}
+      ctx.strokeStyle=`rgba(255,224,170,${.10+audio.energy*.18+hit*.10})`;ctx.lineWidth=(1.1+ring*.7+air*.8)*dpr;ctx.shadowColor='rgba(255,210,145,.65)';ctx.shadowBlur=(5+hit*8)*dpr;ctx.stroke();
+    }ctx.restore();
+  } else if (accent === 'dark') {
+    ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation='lighter';
+    const count=18;
+    for(let i=0;i<count;i++){const q=i/count,sample=visualizerSpectrumSample(q,audio),a=q*Math.PI*2-visualizerAngle*.35;const r=safeR(sphereR*(1.10+(i%3)*.035)+sample*14*dpr,12*dpr);const len=(2+sample*8+hit*5)*dpr;ctx.strokeStyle=`rgba(130,190,255,${.14+sample*.40})`;ctx.shadowColor='rgba(90,145,255,.78)';ctx.shadowBlur=(7+sample*12+hit*8)*dpr;ctx.beginPath();ctx.moveTo(Math.cos(a)*(r-len),Math.sin(a)*(r-len));ctx.lineTo(Math.cos(a)*(r+len),Math.sin(a)*(r+len));ctx.stroke();}ctx.restore();
+  } else if (accent === 'silver') {
+    ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation='lighter';
+    const count=20;
+    for(let i=0;i<count;i++){const q=i/count,sample=visualizerSpectrumSample(q,audio),a=q*Math.PI*2+visualizerAngle*.3;const r=safeR(sphereR*(1.07+(i%2)*.055)+sample*10*dpr,10*dpr);const size=(1+sample*2.2+air*1.4)*dpr;ctx.fillStyle=`rgba(228,244,255,${.18+sample*.48+hit*.12})`;ctx.shadowColor='rgba(205,235,255,.9)';ctx.shadowBlur=(6+sample*11+hit*8)*dpr;ctx.fillRect(Math.cos(a)*r-size/2,Math.sin(a)*r-size/2,size,size);}ctx.restore();
+  } else if (accent === 'glass') {
+    ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation='lighter';
+    for(let ring=0;ring<3;ring++){ctx.beginPath();const rr=safeR(sphereR*(1.02+ring*.085+kick*.018),8*dpr);ctx.strokeStyle=`rgba(190,215,255,${.06+audio.energy*.10+ring*.025})`;ctx.lineWidth=(.7+ring*.45+hit*.5)*dpr;ctx.shadowColor='rgba(180,210,255,.48)';ctx.shadowBlur=(4+audio.energy*8)*dpr;ctx.arc(0,0,rr,0,Math.PI*2);ctx.stroke();}ctx.restore();
+  } else if (accent === 'rgb') {
     ctx.save(); ctx.translate(cx, cy); ctx.globalCompositeOperation = 'lighter';
     const bands = 5;
     for (let band = 0; band < bands; band++) {
@@ -2409,7 +2463,7 @@ function drawThemeAccent(ctx, spec, cx, cy, sphereR, audio, dpr, safeOuterR = In
       ctx.lineWidth = (4.6 - band*.6 + hit*1.4) * dpr; ctx.stroke();
     }
     ctx.restore();
-  } else if (spec.mode === 'love') {
+  } else if (accent === 'love') {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const count = 16;
     for (let i = 0; i < count; i++) {
@@ -2425,7 +2479,7 @@ function drawThemeAccent(ctx, spec, cx, cy, sphereR, audio, dpr, safeOuterR = In
       drawVisualizerHeart(ctx,x,y,size,`hsla(${hue},100%,68%,${.18+spectrum*.50+hit*.12})`,.95,a+Math.PI/2);
     }
     ctx.restore();
-  } else if (spec.mode === 'space') {
+  } else if (accent === 'space') {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (let ring = 0; ring < 3; ring++) {
       ctx.beginPath();
@@ -2454,7 +2508,7 @@ function drawThemeAccent(ctx, spec, cx, cy, sphereR, audio, dpr, safeOuterR = In
       ctx.fillStyle=`hsla(${hue},100%,82%,${.22+sample*.55+hit*.16})`;ctx.shadowColor=`hsla(${hue},100%,72%,.85)`;ctx.shadowBlur=(7+hit*10)*dpr;ctx.fillRect(x-size/2,y-size/2,size,size);
     }
     ctx.restore();
-  } else if (spec.mode === 'electric') {
+  } else if (accent === 'electric') {
     ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation='lighter';
     for(let branch=0;branch<3;branch++){
       const baseA=visualizerAngle*(1.5+branch*.18)+branch*2.1;
@@ -2466,7 +2520,7 @@ function drawThemeAccent(ctx, spec, cx, cy, sphereR, audio, dpr, safeOuterR = In
         const x=Math.cos(a)*r,y=Math.sin(a)*r;j?ctx.lineTo(x,y):ctx.moveTo(x,y);
       }ctx.stroke();
     }ctx.restore();
-  } else if (spec.mode === 'toxic') {
+  } else if (accent === 'toxic') {
     ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation='lighter';
     const count=20;
     for(let i=0;i<count;i++){
@@ -2476,7 +2530,7 @@ function drawThemeAccent(ctx, spec, cx, cy, sphereR, audio, dpr, safeOuterR = In
       const rr=(1.8+sample*4+audio.bass*2.5+hit*2.2)*dpr;
       ctx.fillStyle=`hsla(${spec.h1+sample*28},100%,65%,${.06+sample*.18+hit*.10})`;ctx.shadowColor=`hsla(${spec.h1},100%,60%,.55)`;ctx.shadowBlur=(8+hit*12)*dpr;ctx.beginPath();ctx.arc(Math.cos(a)*r,Math.sin(a)*r,rr,0,Math.PI*2);ctx.fill();
     }ctx.restore();
-  } else if (spec.mode === 'fluid') {
+  } else if (accent === 'fluid') {
     ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation='lighter';
     for(let layer=0;layer<3;layer++){
       ctx.beginPath();const pts=112;
@@ -2564,9 +2618,9 @@ function drawLyricsVisualizer() {
   const renderCx = cx + shakeX, renderCy = cy + shakeY;
 
   // Soft theme-colored aura behind the geometry.
-  const aura = ctx.createRadialGradient(renderCx, renderCy, sphereR * .15, renderCx, renderCy, sphereR * 1.42);
+  const aura = ctx.createRadialGradient(renderCx, renderCy, sphereR * .15, renderCx, renderCy, sphereR * 1.28);
   aura.addColorStop(0, spec.core);
-  aura.addColorStop(.46, spec.glow.replace(/\.[0-9]+\)$/, `${.08 + audio.energy * .12})`));
+  aura.addColorStop(.46, spec.glow.replace(/\.[0-9]+\)$/, `${Math.min(.34,(.09 + audio.energy * .16 + audio.beatPulse*.07) * (spec.glowGain||1))})`));
   aura.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = aura; ctx.beginPath(); ctx.arc(renderCx, renderCy, sphereR * (1.40 + audio.beatPulse*.10), 0, Math.PI * 2); ctx.fill();
 
@@ -2591,18 +2645,19 @@ function drawLyricsVisualizer() {
     const outer = Math.min(inner + length, safeOuterRadius - 10*dpr);
     if (spec.mode === 'rgb') {
       const rayHue = (i / rays * 360 + visualizerMusicPhase * 85 + audio.centroid*45) % 360;
-      ctx.strokeStyle = `hsla(${rayHue},100%,67%,${.055 + reactive * .31})`;
+      ctx.strokeStyle = `hsla(${rayHue},100%,64%,${.10 + reactive * .45})`; ctx.shadowColor=`hsla(${rayHue},100%,62%,${.22+reactive*.48})`;
     } else if (spec.mode === 'love') {
       const rayHue = (318 + i / rays * 78 + visualizerMusicPhase * 28 + audio.highMid*16) % 360;
-      ctx.strokeStyle = `hsla(${rayHue},100%,70%,${.045 + reactive * .27})`;
+      ctx.strokeStyle = `hsla(${rayHue},100%,66%,${.09 + reactive * .42})`; ctx.shadowColor=`hsla(${rayHue},100%,65%,${.22+reactive*.45})`;
     } else if (spec.mode === 'space') {
       const rayHue = (198 + i / rays * 118 + visualizerMusicPhase * 18 + audio.centroid*30) % 360;
-      ctx.strokeStyle = `hsla(${rayHue},100%,74%,${.04 + reactive * .29})`;
-    } else ctx.strokeStyle = `${spec.ray}${.035 + reactive * .25})`;
+      ctx.strokeStyle = `hsla(${rayHue},100%,70%,${.09 + reactive * .43})`; ctx.shadowColor=`hsla(${rayHue},100%,68%,${.22+reactive*.46})`;
+    } else { ctx.strokeStyle = `${spec.ray}${Math.min(.62,(.08 + reactive * .40)*(spec.glowGain||1))})`; ctx.shadowColor=`hsla(${spec.h2},100%,64%,${.20+reactive*.42})`; }
+    ctx.shadowBlur=(1.5 + reactive*5.5 + audio.beatPulse*2.5) * dpr * quality.detail;
     ctx.lineWidth = Math.max(1, (1.0 + reactive * (spec.mode === 'toxic' ? 1.6 : .7)) * dpr);
     ctx.beginPath(); ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner); ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer); ctx.stroke();
   }
-  ctx.restore();
+  ctx.shadowBlur=0; ctx.restore();
 
   drawThemeAccent(ctx, spec, renderCx, renderCy, sphereR, audio, dpr, safeOuterRadius - 8*dpr);
 
@@ -2638,16 +2693,25 @@ function drawLyricsVisualizer() {
       const py = renderCy + y * sphereR * displacement * perspective;
       const depth = Math.max(0, Math.min(1, (z + 1) / 2));
       const dotR = (1.0 + depth*1.35 + frequency*(1.65+audio.aggression*1.5) + audio.beatPulse*.5 + (audio.vocal||0)*.72 + audio.treble*.22) * dpr;
-      const alpha = .11 + depth * .5 + frequency * .28;
+      const alpha = Math.min(.96, (.18 + depth * .56 + frequency * .34 + audio.beatPulse*.08) * (spec.glowGain||1));
       const mix = (depth * .52 + frequency * .48);
       let hue = spec.h1 + (spec.h2-spec.h1)*mix + waveLocal*audio.highMid*9;
       if (spec.mode === 'rgb') hue = (theta/(Math.PI*2)*360 + phi/Math.PI*140 + visualizerMusicPhase*78 + audio.centroid*50) % 360;
       if (spec.mode === 'love') hue = (322 + theta/(Math.PI*2)*82 + visualizerMusicPhase*34 + frequency*28 + audio.highMid*12) % 360;
-      const light = spec.mode === 'blood' ? 50 + depth * 22 : (spec.mode === 'love' ? 58 + depth * 22 : 57 + depth * 22);
+      const light = spec.mode === 'blood' ? 48 + depth * 24 : (spec.mode === 'love' ? 56 + depth * 24 : 55 + depth * 25);
       ctx.fillStyle = `hsla(${hue}, 100%, ${light}%, ${alpha})`;
-      ctx.shadowColor = `hsla(${hue}, 100%, ${Math.min(80, light + 8)}%, ${alpha * .78})`;
-      ctx.shadowBlur = (2 + frequency * 11 + audio.bass * 4) * dpr;
-      ctx.beginPath(); ctx.arc(px, py, dotR, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = `hsla(${hue}, 100%, ${Math.min(84, light + 10)}%, ${Math.min(1,alpha * .92)})`;
+      ctx.shadowBlur = (2.5 + frequency * 10 + audio.bass * 4 + audio.beatPulse*4) * dpr * quality.detail;
+      const accent = spec.accent || spec.mode;
+      if (accent === 'golden' || accent === 'silver') {
+        const r = dotR*.82; ctx.save();ctx.translate(px,py);ctx.rotate(theta+visualizerAngle*.4);ctx.fillRect(-r/2,-r/2,r,r);ctx.restore();
+      } else if (accent === 'dark') {
+        ctx.beginPath();ctx.ellipse(px,py,dotR*.58,dotR*1.22,theta,0,Math.PI*2);ctx.fill();
+      } else if (accent === 'glass') {
+        ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=Math.max(.55*dpr,dotR*.28);ctx.beginPath();ctx.arc(px,py,dotR*.74,0,Math.PI*2);ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(px, py, dotR, 0, Math.PI * 2); ctx.fill();
+      }
     }
   }
   ctx.shadowBlur = 0;
@@ -2660,7 +2724,7 @@ function drawLyricsVisualizer() {
     core.addColorStop(1, 'rgba(48,0,12,0)');
   } else {
     core.addColorStop(0, spec.core);
-    core.addColorStop(.55, spec.glow.replace(/\.[0-9]+\)$/, `${.025 + audio.energy * .09})`));
+    core.addColorStop(.55, spec.glow.replace(/\.[0-9]+\)$/, `${Math.min(.38,(.07 + audio.energy*.16 + audio.beatPulse*.07)*(spec.glowGain||1))})`));
     core.addColorStop(1, 'rgba(0,0,0,0)');
   }
   ctx.fillStyle = core; ctx.beginPath(); ctx.arc(renderCx, renderCy, sphereR * (.90 + audio.beatPulse*.055), 0, Math.PI * 2); ctx.fill();
@@ -2810,6 +2874,28 @@ async function loadLyricsFor(song, keepFields = false) {
       const type = lyricLines.length ? 'Synced lyrics' : 'Lyrics';
       const ai = res.transcription ? ' · AI transcribed' : '';
       lyricsSource.textContent = `${type} · ${res.source}${ai}`;
+    }
+    // v2.2.8 V6: show trustworthy provider lyrics first, then upgrade exact YouTube
+    // caption timing in the background. This shortens the visible lookup wait without
+    // changing the media clock or blocking playback/download paths.
+    if (res?.backgroundCaptionUpgrade && window.echoAPI.upgradeLyricsCaptions && currentSong?.id === song.id) {
+      const upgradeRequest = request;
+      window.echoAPI.upgradeLyricsCaptions({
+        id:song.id,title:song.title,channel:song.channel,duration:song.duration,url:song.url||'',
+        lyrics:res.lyrics||'',syncedLyrics:res.syncedLyrics||'',source:res.source||''
+      }).then(upgrade => {
+        if (upgradeRequest !== lyricsRequest || !upgrade?.syncedLyrics) return;
+        if (song?.id && currentSong?.id && String(song.id) !== String(currentSong.id)) return;
+        applyLyricsTimingPayload(upgrade);
+        if (typeof smartCaptureLyricsPayload === 'function') smartCaptureLyricsPayload({ ...res, ...upgrade });
+        const upgradedLines = parseLrc(upgrade.syncedLyrics);
+        if (!upgradedLines.length) return;
+        lyricLines = upgradedLines; activeLyric = -1;
+        lyricsBody.innerHTML = lyricLines.map((line,i)=>`<p class="lyric-line" data-line="${i}">${escapeHtml(line.text)||'♪'}</p>`).join('');
+        lyricsSource.textContent = `Synced lyrics · ${upgrade.source || res.source || 'YouTube timing'}`;
+        setLyricsAutoFollow(true); syncLyrics(true); startLyricTicker();
+        if (typeof smartPrepareKaraokeWords === 'function') smartPrepareKaraokeWords();
+      }).catch(()=>{});
     }
   } catch (error) {
     if (request === lyricsRequest) lyricsBody.textContent = 'Lyrics load nahi hui. Retry dabao.';
@@ -3563,7 +3649,7 @@ function smartSearchCollectionCard(title, subtitle, songs, type) {
   const img=document.createElement('img'); img.src=songs[0]?.thumbnail||DEFAULT_THUMB; img.alt='';
   const h=document.createElement('h3'); h.textContent=title; const p=document.createElement('p'); p.textContent=`${subtitle} · ${songs.length} songs`;
   const actions=document.createElement('div'); actions.className='playlist-card-actions';
-  const open=document.createElement('button'); open.textContent='Open'; open.className='playlist-open-btn';
+  const open=document.createElement('button'); open.textContent='Open Songs'; open.className='playlist-open-btn';
   const play=document.createElement('button'); play.textContent='Play'; play.className='playlist-play-btn';
   open.onclick=()=>smartOpenSearchCollection(title,songs,type); play.onclick=()=>playSongCollection(songs,title,{type:`search-${type}`,key:`search-${type}:${title}`},play);
   actions.append(open,play);

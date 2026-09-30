@@ -858,7 +858,7 @@ ipcMain.handle('set-window-opacity', (event, value) => {
 
 // Cache successful lyrics for offline use. v9 invalidates v8 timelines that may have
 // collapsed legitimate short/prefix English lines or rapid-fired grouped timestamps.
-const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v10.json');
+const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v11.json');
 const lyricsControllers = new Map();
 const lyricsTimingControllers = new Map();
 
@@ -870,14 +870,27 @@ function lyricsTextForLanguageCheck(result) {
     .trim();
 }
 
+function likelyEnglishTranslation(text = '') {
+  const words = String(text).toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) || [];
+  if (words.length < 5) return false;
+  const common = new Set(['i','you','he','she','we','they','me','my','your','our','their','the','a','an','and','or','but','is','am','are','was','were','be','been','to','of','in','on','for','with','from','this','that','these','those','it','its','not','no','yes','love','heart','girl','boy','feel','know','want','need','can','cannot','cant','will','would','dont','do','does','have','has','had','more','never','always','when','where','why','how']);
+  let hits = 0;
+  for (const word of words) if (common.has(word.replace(/'/g,''))) hits++;
+  return hits / words.length >= .34;
+}
+
 function lyricsLanguageMismatch(result, youtube) {
   const text = lyricsTextForLanguageCheck(result);
   if (!text) return false;
-  const lang = String(youtube?.metadata?.language || youtube?.metadata?.originalLanguage || youtube?.captionLanguage || '').toLowerCase();
+  const lang = String(youtube?.metadata?.originalLanguage || youtube?.metadata?.language || youtube?.captionLanguage || '').toLowerCase();
+  const base = lang.split('-')[0];
   const profile = scriptProfile(text);
-  // Strong guard for the bug where an English video selected a Hindi auto-translation
-  // and Dinecho then romanized that translation into Hinglish.
-  if (lang.startsWith('en') && profile.devanagariRatio > 0.28) return true;
+  // Reject obvious cross-script substitutions.
+  if (base === 'en' && (profile.devanagariRatio > .28 || profile.gurmukhiRatio > .28 || profile.arabicRatio > .28)) return true;
+  // For a known non-English source language, reject provider text that reads like an
+  // English sentence. Genuine romanized Punjabi/Hindi/Arabic normally contains mostly
+  // non-English lexical forms, so it remains eligible for the Romanized toggle.
+  if (base && base !== 'en' && profile.latinRatio > .72 && likelyEnglishTranslation(text)) return true;
   return false;
 }
 
@@ -961,16 +974,28 @@ ipcMain.handle('get-lyrics', async (event, song) => {
 
   const canUseVideoInfo = !!song.url && fs.existsSync(YTDLP_PATH);
   const canAutoTranscribe = !!song.streamUrl || (!!song.filepath && fs.existsSync(song.filepath)) || canUseVideoInfo;
-  const [catalogResult, youtube] = await Promise.all([
+  const [catalogResult, youtubeMeta] = await Promise.all([
     getLyrics(song),
-    canUseVideoInfo ? getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, { signal, browserAuth: readYouTubeAccess(), tempRoot: path.join(cacheDir, 'lyrics-captions') }) : Promise.resolve(null)
+    canUseVideoInfo ? getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, { signal, browserAuth: readYouTubeAccess(), tempRoot: path.join(cacheDir, 'lyrics-captions'), metadataOnly:true }) : Promise.resolve(null)
   ]);
+  let youtube = youtubeMeta;
   if (signal.aborted) return { cancelled: true };
   let result = catalogResult || {};
 
   // Never let a catalogue-only instrumental flag suppress a real vocal track.
   if (result.instrumental && !isExplicitInstrumentalSong(song)) result = {};
   if (lyricsLanguageMismatch(result, youtube)) result = {};
+
+  // If trustworthy provider lyrics are already available, return them now and let the
+  // renderer request exact YouTube timing in the background. If the provider is empty
+  // or language-mismatched, fetch full source-language captions before showing text.
+  const providerReady = hasLyricsText(result);
+  if (canUseVideoInfo && !providerReady) {
+    youtube = await getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, { signal, browserAuth: readYouTubeAccess(), tempRoot: path.join(cacheDir, 'lyrics-captions') });
+    if (signal.aborted) return { cancelled:true };
+  } else if (providerReady && canUseVideoInfo) {
+    result = { ...result, backgroundCaptionUpgrade:true };
+  }
 
   if (youtube?.syncedLyrics) {
     // Exact video captions are the strongest evidence for both language and timing.
@@ -995,7 +1020,7 @@ ipcMain.handle('get-lyrics', async (event, song) => {
     } else {
       result = withScriptVariants({ ...youtube, timingPrecision: 'youtube-exact', timingOffsetSeconds: 0 });
     }
-  } else if (youtube?.metadata?.title) {
+  } else if (!providerReady && youtube?.metadata?.title) {
     // Uploader-heavy titles and slowed/reverb uploads often have poor search metadata.
     // Retry the catalogue with YouTube's own track/artist fields when available.
     const artist = youtube.metadata.artist || '';
@@ -1049,6 +1074,30 @@ ipcMain.handle('get-lyrics', async (event, song) => {
   sendStatus({ stage: 'done', text: '' });
   if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId);
   return result;
+});
+
+// Upgrade already-visible provider lyrics with exact source-language YouTube caption timing.
+ipcMain.handle('upgrade-lyrics-captions', async (event, song) => {
+  if (!song?.url || !fs.existsSync(YTDLP_PATH)) return { success:false };
+  const controller = new AbortController();
+  try {
+    const youtube = await getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, {
+      signal:controller.signal, browserAuth:readYouTubeAccess(), tempRoot:path.join(cacheDir,'lyrics-captions')
+    });
+    if (!youtube?.syncedLyrics) return { success:false };
+    const original = { lyrics:song.lyrics||'', syncedLyrics:song.syncedLyrics||'', source:song.source||'Lyrics' };
+    if (original.syncedLyrics) {
+      const aligned = alignSyncedLyricsToCaptions(original.syncedLyrics, youtube.syncedLyrics);
+      if (aligned && aligned.matched >= 2 && aligned.confidence >= .42) {
+        return withScriptVariants({ ...original, syncedLyrics:aligned.syncedLyrics,
+          source:`${original.source} text · ${youtube.source} timing`, timingPrecision:'youtube-aligned',
+          timingMatchCount:aligned.matched, timingConfidence:aligned.confidence, timingOffsetSeconds:aligned.offset,
+          detectedLanguage:youtube.captionLanguage||youtube.metadata?.language||'', wordTimings:youtube.wordTimings||[],
+          wordTimingSource:youtube.wordTimingSource||'' });
+      }
+    }
+    return withScriptVariants({ ...youtube, timingPrecision:'youtube-exact', timingOffsetSeconds:0 });
+  } catch { return { success:false }; }
 });
 
 // Upgrade already-visible plain lyrics to timed lyrics in the background. This is

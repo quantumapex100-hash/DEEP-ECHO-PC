@@ -10,7 +10,7 @@ const suite=fs.readFileSync(path.join(root,'src','v160-suite.js'),'utf8');
 const pkg=require('../package.json');
 
 test('v2.2.7 repairs queue and immersive overlays that v1.7.0 accidentally made relative',()=>{
-  assert.equal(pkg.version,'2.2.7');
+  assert.equal(pkg.version,'2.2.8');
   assert.doesNotMatch(expCss,/\.app,\.queue-panel,\.modal,\.immersive-player,\.command-palette\{position:relative/);
   assert.match(expCss,/\.queue-panel\{position:fixed;z-index:70\}/);
   assert.match(expCss,/\.immersive-player\{position:fixed;z-index:10020\}/);

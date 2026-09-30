@@ -1,0 +1,299 @@
+/* ===== DEEP-ECHO v2.2.8 preview: visual polish only =====
+   This layer intentionally changes presentation only. It does not touch
+   playback, analyser capture, lyric timing/sync or download behaviour. */
+
+:root {
+  --v228-future-lyric-opacity:.64;
+  --v228-past-lyric-opacity:.40;
+  --v228-visualizer-brightness: 1.08;
+  --v228-lyrics-dim-alpha: 0;
+  --v228-visualizer-contrast: 1.16;
+  --v228-visualizer-saturation: 1.24;
+}
+
+
+/* Lyrics page: remove the full overlay plane between lyrics and the visualizer.
+   Only an optional edge-fade amount can be reintroduced from Settings if desired. */
+.lyrics-content-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(0,0,0,0) 0 62%, rgba(0,0,0,calc(var(--v228-lyrics-dim-alpha) * .45)) 100%),
+    linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,calc(var(--v228-lyrics-dim-alpha) * .35)));
+}
+
+#lyricsVisualizerCanvas {
+  position: relative;
+  z-index: 1;
+  filter:
+    brightness(var(--v228-visualizer-brightness))
+    contrast(var(--v228-visualizer-contrast))
+    saturate(var(--v228-visualizer-saturation));
+  transform: translateZ(0) scale(1.055);
+}
+
+
+.lyrics-visualizer-core {
+  z-index: 2;
+  background: radial-gradient(circle, color-mix(in srgb,var(--gold) 13%,transparent), transparent 72%);
+  box-shadow: 0 0 58px color-mix(in srgb,var(--gold) 14%,transparent);
+  animation: v228CorePulse 2.9s ease-in-out infinite;
+}
+
+
+/* Extra depth rings are CSS-only and follow the already-running canvas. */
+.lyrics-ambient-visualizer {
+  opacity: 1 !important;
+  filter: none;
+}
+
+
+.lyrics-ambient-visualizer::before,
+.lyrics-ambient-visualizer::after {
+  content: '';
+  position: absolute;
+  inset: 17%;
+  z-index: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--gold) 62%, transparent);
+  box-shadow:
+    0 0 26px color-mix(in srgb, var(--shadow) 18%, transparent),
+    0 0 58px color-mix(in srgb, var(--gold) 18%, transparent),
+    inset 0 0 26px rgba(255,255,255,.04);
+  opacity: .68;
+  animation: v228VisualizerBreath 4.8s ease-in-out infinite;
+}
+
+.lyrics-ambient-visualizer::after {
+  inset: 22%;
+  opacity: .50;
+  border-style: dashed;
+  animation-duration: 6.4s;
+  animation-direction: reverse;
+}
+
+@keyframes v228VisualizerBreath {
+  0%,100% { transform: scale(.978); opacity: .34; }
+  50% { transform: scale(1.038); opacity: .72; }
+}
+
+@keyframes v228CorePulse {
+  0%,100% { transform: scale(.985); filter: brightness(1); }
+  50% { transform: scale(1.045); filter: brightness(1.15); }
+}
+
+
+/* Make lyrics feel free-floating instead of boxed.
+   No line card, no inset bar, and no clipped width treatment. */
+.lyrics-view .lyrics-body {
+  max-width: min(1120px, 96vw);
+  padding-inline: 0;
+}
+
+.lyrics-view .lyric-line,
+body.v170-karaoke #lyricsView .lyric-line {
+  max-width: none;
+  margin-left: 0;
+  padding: 8px 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+.lyrics-view .lyric-line.current,
+body.v170-karaoke #lyricsView .lyric-line.current {
+  background: none !important;
+  box-shadow: none !important;
+  padding-inline: 0 !important;
+}
+
+/* Current lyric stays visually dominant over the darker visualizer. */
+.lyrics-view .lyric-line.current {
+  text-shadow:
+    0 2px 10px rgba(0,0,0,.72),
+    0 0 18px color-mix(in srgb, var(--gold) 20%, transparent);
+}
+
+.lyrics-view .lyric-line:not(.current) {
+  text-shadow: 0 2px 8px rgba(0,0,0,.48);
+}
+
+/* Immersive player gets the same richer visual definition without touching
+   the visualizer draw loop or audio analyser. */
+#immersiveVisualizerCanvas {
+  filter:
+    brightness(var(--v228-visualizer-brightness))
+    contrast(1.14)
+    saturate(1.20)
+    drop-shadow(0 0 28px color-mix(in srgb,var(--immersive-accent) 38%,transparent)) !important;
+}
+
+
+.immersive-lyrics-panel {
+  background: color-mix(in srgb, rgba(3,3,8,.96) 88%, var(--immersive-accent) 12%) !important;
+  box-shadow:
+    0 28px 90px rgba(0,0,0,.52),
+    0 0 42px color-mix(in srgb,var(--immersive-accent) 10%,transparent) !important;
+}
+
+.immersive-lyrics-body .lyric-line.current {
+  text-shadow:
+    0 2px 12px rgba(0,0,0,.8),
+    0 0 20px color-mix(in srgb,var(--immersive-accent) 24%,transparent);
+}
+
+.v228-visual-polish-controls {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.v228-visual-polish-controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--gold);
+}
+
+.v228-dim-row { margin-top: 12px; }
+
+/* Performance/Game Mode keeps the new decorative rings cheap. */
+body.v160-performance .lyrics-ambient-visualizer::before,
+body.v160-performance .lyrics-ambient-visualizer::after,
+body.deepeccho-game-mode .lyrics-ambient-visualizer::before,
+body.deepeccho-game-mode .lyrics-ambient-visualizer::after {
+  animation: none;
+  opacity: .18;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-ambient-visualizer::before,
+  .lyrics-ambient-visualizer::after { animation: none; }
+}
+
+
+/* Preview-only version marker. This does not change updater/package version. */
+.v228-test-label {
+  margin-top: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+  color: var(--gold-bright);
+  opacity: .9;
+  text-transform: uppercase;
+}
+
+/* v3 stronger brightness tuning: visual-only, leaves audio/sync/download logic untouched. */
+
+
+/* v4 theme-native glow: color comes from each theme instead of turning the sphere white. */
+body[data-theme="golden"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.16) saturate(1.25) drop-shadow(0 0 24px rgba(255,190,70,.52)) drop-shadow(0 0 58px rgba(255,160,35,.22))}
+body[data-theme="light"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.12) saturate(1.18) drop-shadow(0 0 22px rgba(205,154,76,.38))}
+body[data-theme="dark"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.18) saturate(1.25) drop-shadow(0 0 24px rgba(130,185,255,.46)) drop-shadow(0 0 54px rgba(87,124,255,.20))}
+body[data-theme="purple"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.18) saturate(1.30) drop-shadow(0 0 24px rgba(185,95,255,.58)) drop-shadow(0 0 58px rgba(115,65,255,.24))}
+body[data-theme="toxic"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.18) saturate(1.32) drop-shadow(0 0 24px rgba(65,255,115,.58)) drop-shadow(0 0 58px rgba(20,220,82,.22))}
+body[data-theme="blood"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.22) saturate(1.34) drop-shadow(0 0 25px rgba(255,38,82,.62)) drop-shadow(0 0 62px rgba(190,0,40,.28))}
+body[data-theme="silver"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.15) saturate(1.12) drop-shadow(0 0 24px rgba(205,230,255,.52)) drop-shadow(0 0 55px rgba(122,180,235,.20))}
+body[data-theme="transparent"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.14) saturate(1.20) drop-shadow(0 0 24px rgba(175,205,255,.46))}
+body[data-theme="fluids"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.18) saturate(1.30) drop-shadow(0 0 24px rgba(65,220,255,.56)) drop-shadow(0 0 58px rgba(95,95,255,.20))}
+body[data-theme="rgb"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.18) saturate(1.34) drop-shadow(0 0 18px rgba(255,75,190,.40)) drop-shadow(0 0 28px rgba(70,220,255,.44)) drop-shadow(0 0 52px rgba(125,90,255,.22))}
+body[data-theme="love"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.18) saturate(1.32) drop-shadow(0 0 23px rgba(255,80,175,.60)) drop-shadow(0 0 58px rgba(220,70,255,.22))}
+body[data-theme="space"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.18) saturate(1.30) drop-shadow(0 0 22px rgba(70,185,255,.56)) drop-shadow(0 0 58px rgba(165,85,255,.25))}
+body[data-theme="dragon"] #lyricsVisualizerCanvas{filter:brightness(var(--v228-visualizer-brightness)) contrast(1.20) saturate(1.32) drop-shadow(0 0 24px rgba(255,120,35,.62)) drop-shadow(0 0 60px rgba(220,55,10,.24))!important}
+
+/* RGB clean line mode: turning Word by Word OFF must never leave transparent clipped text. */
+body.word-by-word-off.lyrics-theme-fx[data-theme="rgb"] #lyricsView .lyric-line,
+body.word-by-word-off.lyrics-theme-fx[data-theme="rgb"] .immersive-lyrics-body .lyric-line{
+  -webkit-text-fill-color:currentColor!important;
+  background-image:none!important;
+  background-clip:border-box!important;
+  -webkit-background-clip:border-box!important;
+}
+body.word-by-word-off.lyrics-theme-fx[data-theme="rgb"] #lyricsView .lyric-line.current,
+body.word-by-word-off.lyrics-theme-fx[data-theme="rgb"] .immersive-lyrics-body .lyric-line.current{
+  color:#f4f8ff!important;
+  -webkit-text-fill-color:#f4f8ff!important;
+  background:none!important;
+  text-shadow:0 0 14px rgba(86,220,255,.58),0 0 28px rgba(255,76,205,.30)!important;
+}
+
+
+/* v5 keeps the canvas itself near native brightness. The glow now comes from
+   theme-colored renderer particles/rays, avoiding the grey/white wash caused by
+   global brightness filters. */
+body[data-theme] #lyricsVisualizerCanvas{brightness:1;}
+
+
+/* v6 karaoke visualizer parity: Karaoke must not dim/desaturate the theme visualizer. */
+body.v170-karaoke #lyricsView .lyrics-ambient-visualizer{
+  opacity:1!important;
+  filter:none!important;
+}
+body.v170-karaoke #lyricsView #lyricsVisualizerCanvas{
+  opacity:1!important;
+}
+
+/* v6 cleaner glow: preserve luminous edges without a broad dusty halo. */
+body[data-theme] #lyricsVisualizerCanvas{
+  image-rendering:auto;
+}
+
+
+/* v7 future-lyric readability:
+   Increase legibility of upcoming/past lyrics without adding boxes or reducing
+   visualizer glow. Support stays local to the text via tint/shadow/outline. */
+#lyricsView .lyric-line:not(.current) {
+  opacity: .58;
+  color: color-mix(in srgb, var(--text) 78%, var(--gold-bright) 22%);
+  -webkit-text-stroke: .28px rgba(0,0,0,.32);
+  text-shadow:
+    0 2px 3px rgba(0,0,0,.78),
+    0 0 10px rgba(0,0,0,.42),
+    0 0 12px color-mix(in srgb, var(--gold) 10%, transparent) !important;
+}
+#lyricsView .lyric-line.past { opacity: var(--v228-past-lyric-opacity); }
+#lyricsView .lyric-line:not(.current):not(.past) { opacity: var(--v228-future-lyric-opacity); }
+
+body[data-theme="love"] #lyricsView .lyric-line:not(.current),
+body[data-theme="rgb"] #lyricsView .lyric-line:not(.current),
+body[data-theme="blood"] #lyricsView .lyric-line:not(.current),
+body[data-theme="dragon"] #lyricsView .lyric-line:not(.current),
+body[data-theme="toxic"] #lyricsView .lyric-line:not(.current),
+body[data-theme="space"] #lyricsView .lyric-line:not(.current),
+body[data-theme="fluids"] #lyricsView .lyric-line:not(.current) {
+  color: color-mix(in srgb, white 72%, var(--gold-bright) 28%);
+  -webkit-text-stroke: .32px rgba(0,0,0,.40);
+  text-shadow:
+    0 2px 4px rgba(0,0,0,.86),
+    0 0 12px rgba(0,0,0,.48),
+    0 0 14px color-mix(in srgb, var(--gold) 12%, transparent) !important;
+}
+body[data-theme="love"] #lyricsView .lyric-line:not(.current):not(.past),
+body[data-theme="rgb"] #lyricsView .lyric-line:not(.current):not(.past),
+body[data-theme="blood"] #lyricsView .lyric-line:not(.current):not(.past),
+body[data-theme="dragon"] #lyricsView .lyric-line:not(.current):not(.past),
+body[data-theme="toxic"] #lyricsView .lyric-line:not(.current):not(.past),
+body[data-theme="space"] #lyricsView .lyric-line:not(.current):not(.past),
+body[data-theme="fluids"] #lyricsView .lyric-line:not(.current):not(.past) { opacity: .70; }
+body[data-theme="love"] #lyricsView .lyric-line.past,
+body[data-theme="rgb"] #lyricsView .lyric-line.past,
+body[data-theme="blood"] #lyricsView .lyric-line.past,
+body[data-theme="dragon"] #lyricsView .lyric-line.past,
+body[data-theme="toxic"] #lyricsView .lyric-line.past,
+body[data-theme="space"] #lyricsView .lyric-line.past,
+body[data-theme="fluids"] #lyricsView .lyric-line.past { opacity: .44; }
+
+body.v170-karaoke #lyricsView .lyric-line:not(.current) { opacity: .54 !important; }
+body.v170-karaoke #lyricsView .lyric-line:not(.current):not(.past) { opacity: var(--v228-future-lyric-opacity) !important; }
+body.v170-karaoke #lyricsView .lyric-line.past { opacity: .34 !important; }
+
+.immersive-lyrics-body .lyric-line:not(.current) {
+  -webkit-text-stroke: .26px rgba(0,0,0,.34);
+  text-shadow: 0 2px 4px rgba(0,0,0,.80), 0 0 10px rgba(0,0,0,.42);
+}
+.immersive-lyrics-body .lyric-line:not(.current):not(.past) { opacity: .58; }
+.immersive-lyrics-body .lyric-line.past { opacity: .36; }
+
+/* v7 future-lyric readability */

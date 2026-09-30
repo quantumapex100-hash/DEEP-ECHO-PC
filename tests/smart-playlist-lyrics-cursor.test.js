@@ -11,7 +11,7 @@ const themes = ['golden','light','dark','purple','toxic','blood','silver','trans
 
 test('playlist cards have separate Open and Play behavior while song cards stay direct-play', () => {
   assert.match(renderer, /function buildPlaylistCard\(/);
-  assert.match(renderer, /openBtn\.textContent = 'Open'/);
+  assert.match(renderer, /openBtn\.textContent = openLabel/);
   assert.match(renderer, /playBtn\.textContent = 'Play'/);
   assert.match(renderer, /card\.addEventListener\('click', open\)/);
   assert.match(renderer, /function buildSongCard\(song, contextSpec = null\)/);

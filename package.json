@@ -1,7 +1,7 @@
 {
   "name": "deepeccho",
-  "version": "2.2.7",
-  "description": "DEEP-ECHO 2.2.7 - visualizer PCM recovery, clean line-by-line lyrics, queue overlay and immersive player repair",
+  "version": "2.2.8",
+  "description": "DEEP-ECHO 2.2 END - final 2.2 release with theme visualizers, readable synced lyrics, playlist polish and stable playback/download safeguards",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",

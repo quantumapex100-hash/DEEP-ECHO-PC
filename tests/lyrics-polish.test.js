@@ -16,6 +16,19 @@ test('Hindi Devanagari lyrics can be shown as readable Roman/Hinglish text', () 
   assert.match(out.toLowerCase(), /ho/);
 });
 
+test('Arabic-script lyrics can be romanized into English letters without translation', () => {
+  const out = romanizeHindiText('سلام');
+  assert.doesNotMatch(out, /[\u0600-\u06FF]/);
+  assert.match(out.toLowerCase(), /s|sa/);
+});
+
+test('Punjabi Gurmukhi lyrics can be romanized into English letters without translation', () => {
+  const out = romanizeHindiText('ਸਤ ਸ੍ਰੀ ਅਕਾਲ');
+  assert.doesNotMatch(out, /[\u0A00-\u0A7F]/);
+  assert.match(out.toLowerCase(), /sat/);
+  assert.match(out.toLowerCase(), /akaal|akal/);
+});
+
 test('Bollywood-style YouTube titles generate a clean first title candidate', () => {
   const list = titleCandidates({ title: 'Saiyaara Title Song | Official Lyrical Video | Movie' }, { title: 'Saiyaara Title Song | Movie', artist: '' });
   assert.ok(list.some(v => /Saiyaara/i.test(v)));
@@ -48,4 +61,32 @@ test('transparent theme drives real BrowserWindow opacity and can return to soli
   assert.match(main, /win\.setOpacity\(safe\)/);
   assert.match(renderer, /theme === 'transparent' \? safe \/ 100 : 1/);
   assert.match(html, /max="100"/);
+});
+
+
+test('caption selection never substitutes English translation when original Arabic is known', () => {
+  const info={language:'ar',automatic_captions:{
+    en:[{ext:'json3',url:'en',name:'English (translated)'}],
+    ar:[{ext:'json3',url:'ar',name:'Arabic'}]
+  }};
+  const track=chooseCaptionTrack(info);
+  assert.equal(track.lang,'ar');
+});
+
+test('caption selection keeps Punjabi source captions instead of translated English', () => {
+  const info={language:'pa',automatic_captions:{
+    en:[{ext:'json3',url:'en',name:'English (translated)'}],
+    pa:[{ext:'json3',url:'pa',name:'Punjabi'}]
+  }};
+  const track=chooseCaptionTrack(info);
+  assert.equal(track.lang,'pa');
+});
+
+
+test('caption selector strongly prefers explicit original track when metadata language is missing', () => {
+  const track = chooseCaptionTrack({ automatic_captions: {
+    en: [{ext:'json3',url:'english',name:'English'}],
+    'pa-orig': [{ext:'json3',url:'punjabi',name:'Punjabi (Original)'}]
+  }});
+  assert.equal(track.lang,'pa-orig');
 });

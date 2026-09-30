@@ -11,6 +11,7 @@
 <link rel="icon" type="image/png" href="assets/dinecho-logo.png" />
 <link rel="stylesheet" href="v200.css" />
 <link rel="stylesheet" href="v220-home-search.css" />
+<link rel="stylesheet" href="v228-visual-polish.css" />
 </head>
 <body data-theme="golden">
 
@@ -20,6 +21,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><div class="brand-text">DEEP-ECHO</div></div>
+    <div class="v228-test-label">2.2 END</div>
 
     <nav class="side-nav">
       <button class="nav-item active" data-tab="home">Home</button>
@@ -143,7 +145,7 @@
               </button>
               <div class="lyrics-tool-row">
                 <input id="lyricsFindInput" class="lyrics-find-input" type="search" placeholder="Find in lyrics" aria-label="Find text in lyrics"/>
-                <button id="lyricsOriginalToggle" class="lyrics-fx-toggle" type="button" disabled title="Available when romanization is useful">Romanized</button>
+                <button id="lyricsOriginalToggle" class="lyrics-fx-toggle" type="button" disabled title="English letters only — not English translation">Romanized</button>
                 <button id="lyricsTranslationToggle" class="lyrics-fx-toggle" type="button" disabled title="Enabled when a translation is available">Translate</button>
                 <button id="v170KaraokeToggle" class="lyrics-fx-toggle" type="button" aria-pressed="false" title="Distraction-free karaoke layout"><span>Karaoke</span><strong id="v170KaraokeState">OFF</strong></button>
                 <button id="wordByWordToggle" class="lyrics-fx-toggle" type="button" aria-pressed="true" title="Highlight each word using exact available timing; falls back to line sync when exact word timing is unavailable"><span>Word by Word</span><strong id="wordByWordState">ON</strong></button>
@@ -363,6 +365,17 @@
                 <div class="setting-title-row"><span>Pro Visualizer</span><strong id="v170VisualizerState">Theme Sphere</strong></div>
                 <label class="setting-select-row" for="v170VisualizerMode"><span>Mode</span><select id="v170VisualizerMode"><option value="theme">Theme Sphere</option><option value="spectrum">Spectrum Analyzer</option><option value="waveform">Waveform</option><option value="circular">Circular Spectrum</option><option value="stereo">Stereo L/R Meter</option><option value="vu">VU Meter</option><option value="vocal">Vocal Energy</option></select></label>
                 <label class="setting-select-row" for="v170VisualizerQuality"><span>Render quality</span><select id="v170VisualizerQuality"><option value="eco">Eco</option><option value="balanced" selected>Balanced</option><option value="high">High</option><option value="ultra">Ultra</option></select></label>
+                <div class="v228-visual-polish-controls" aria-label="Visualizer polish controls">
+                  <div class="setting-title-row"><span>Visualizer glow</span><strong id="v228VisualizerBrightnessValue">108%</strong></div>
+                  <input id="v228VisualizerBrightnessRange" type="range" min="85" max="135" step="1" value="108" aria-label="Visualizer brightness"/>
+                  <label class="setting-select-row v228-dim-row" for="v228GlowPreset"><span>Glow preset</span><select id="v228GlowPreset"><option value="soft">Soft</option><option value="balanced" selected>Balanced</option><option value="strong">Strong</option></select></label>
+                  <div class="setting-title-row v228-dim-row"><span>Future lyrics contrast</span><strong id="v228FutureLyricsValue">64%</strong></div>
+                  <input id="v228FutureLyricsRange" type="range" min="45" max="80" step="1" value="64" aria-label="Future lyrics contrast"/>
+                  <div class="setting-title-row v228-dim-row"><span>Stage edge fade</span><strong id="v228LyricsBackdropValue">0%</strong></div>
+                  <input id="v228LyricsBackdropRange" type="range" min="0" max="20" step="1" value="0" aria-label="Optional stage edge fade"/>
+                  <button id="v228ResetVisualBtn" class="secondary-btn" type="button">Reset Visual Settings</button>
+                  <p class="setting-help">Visual-only controls. Playback, downloads, sync engine and lyric timing are not changed.</p>
+                </div>
                 <p class="setting-help">Eco lowers render resolution/FPS only; the same visualizer features remain available.</p>
               </div>
               <div class="setting-block">
@@ -612,5 +625,6 @@
 <script src="v200-core.js"></script>
 <script src="v200.js"></script>
 <script src="v220-home-search.js"></script>
+<script src="v228-visual-polish.js"></script>
 </body>
 </html>

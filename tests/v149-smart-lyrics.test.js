@@ -16,7 +16,7 @@ test('v1.4.9 adds smart local AI lyrics fallback without trusting catalogue inst
   assert.equal(pkg.dependencies['whisper-cpp-node'],'0.2.12');
   assert.equal(pkg.dependencies['ffmpeg-static'],'5.3.0');
   assert.match(main,/transcribeSong/);
-  assert.match(main,/lyrics-cache-v10\.json/);
+  assert.match(main,/lyrics-cache-v11\.json/);
   assert.match(main,/Never let a catalogue-only instrumental flag suppress a real vocal track/);
   assert.match(preload,/onLyricsStatus/);
 });
