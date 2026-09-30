@@ -32,7 +32,7 @@ test('visualizer self-heals silent remote PCM by materializing the already-suppo
   assert.match(renderer,/window\.echoAPI\.prepareCompatiblePlayback\(normalizeSong\(currentSong\)\)/);
   assert.match(renderer,/visualizerReconnectAttempts >= 2/);
   assert.match(renderer,/local PCM recovery active/);
-  assert.match(renderer,/await resumeAudioAnalyser\(true\);\n    startLyricsVisualizer\(\);\n    startAudioEnergyTicker\(\);/);
+  assert.match(renderer,/await resumeAudioAnalyser\(true\);\r?\n\s*startLyricsVisualizer\(\);\r?\n\s*startAudioEnergyTicker\(\);/);
 });
 
 test('automatic game mode no longer freezes visualizer merely because the app loses focus',()=>{
