@@ -86,7 +86,15 @@ jobs:
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
           gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.2-END.md --latest
-          gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,isLatest,url,assets
+          $view = gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,url,assets,publishedAt,isDraft,isPrerelease | ConvertFrom-Json
+          $latestTag = gh api "repos/$env:RELEASE_REPO/releases/latest" --jq ".tag_name"
+          if ($latestTag -ne $tag) { throw "Release $tag exists but is not the latest release. Latest is $latestTag" }
+          if ($view.name -ne $env:RELEASE_TITLE) { throw "Release title mismatch: expected $env:RELEASE_TITLE, got $($view.name)" }
+          if (-not ($view.assets.name -contains "DEEP-ECHO-$packageVersion-Setup.exe")) { throw "Installer asset missing from release." }
+          if (-not ($view.assets.name -contains "latest.yml")) { throw "latest.yml missing from release." }
+          Write-Host "Release verified: $($view.name) [$($view.tagName)]"
+          Write-Host "Latest endpoint: $latestTag"
+          Write-Host "URL: $($view.url)"
 
       - name: Upload build diagnostics on failure
         if: failure()
