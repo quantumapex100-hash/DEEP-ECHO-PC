@@ -210,6 +210,11 @@ const lyricsBody = document.getElementById('lyricsBody');
 const lyricsThemeFxToggle = document.getElementById('lyricsThemeFxToggle');
 const lyricsThemeFxToggleText = document.getElementById('lyricsThemeFxToggleText');
 const lyricsSyncBtn = document.getElementById('lyricsSyncBtn');
+const exactLyricsBtn = document.getElementById('exactLyricsBtn');
+const exactLyricsState = document.getElementById('exactLyricsState');
+const exactLyricsProgress = document.getElementById('exactLyricsProgress');
+const exactLyricsProgressFill = document.getElementById('exactLyricsProgressFill');
+const exactLyricsProgressText = document.getElementById('exactLyricsProgressText');
 const playerCollapseBtn = document.getElementById('playerCollapseBtn');
 const playerBar = document.querySelector('.player-bar');
 const appFullscreenBtn = document.getElementById('appFullscreenBtn');
@@ -294,7 +299,8 @@ const STORAGE = {
   fluidIntensity: 'echo-fluid-intensity-v1',
   fluidPreset: 'echo-fluid-preset-v1',
   lyricsThemeFx: 'echo-lyrics-theme-fx-v1',
-  playerCollapsed: 'echo-player-collapsed-v1'
+  playerCollapsed: 'echo-player-collapsed-v1',
+  exactLyricsEnabled: 'echo-exact-lyrics-enabled-v1'
 };
 
 function getStored(key, fallback) {
@@ -1694,6 +1700,7 @@ async function playLocal(song, requestId) {
   audioAnalyserMediaKey = ''; // force a fresh capture stream for the new media resource.
   resetVisualizerSignalState();
   currentSong = { ...song, url: song.url || `https://www.youtube.com/watch?v=${song.id}` };
+  resetExactLyricsForSong(currentSong);
   // Critical path first: paint Now Playing + start audio. Lyrics/visual FX/network work is deferred.
   nowTitle.textContent = song.title;
   nowChannel.textContent = song.channel || '';
@@ -1888,6 +1895,8 @@ let lyricsAutoFollow = true;
 let lyricAnimationFrame = 0;
 let lyricsTimingOffsetSeconds = 0;
 let lyricsTimingPrecision = 'catalog-synced';
+let exactLyricsEnabled = false;
+let exactLyricsSongId = '';
 // audio.currentTime is the authoritative media clock. Keep only tiny paint anticipation.
 const LYRICS_RENDER_AHEAD_SECONDS = 0.04;
 function lyricsPlaybackClock() {
@@ -1908,6 +1917,9 @@ const lyricsVisualizerCanvas = document.getElementById('lyricsVisualizerCanvas')
 
 function updateLyricsVisual(song = currentSong) {
   if (lyricsArtistMeta) lyricsArtistMeta.textContent = song?.channel || song?.artist || 'Play a song to see its lyrics here.';
+  // V12: the per-song Exact Lyrics control must stay clickable while it is OFF.
+  // It is disabled only when there is no playable/current song to rescue.
+  if (exactLyricsBtn) exactLyricsBtn.disabled = !song?.title;
 }
 
 let audioContext = null;
@@ -2796,18 +2808,85 @@ function findActiveLyricIndex(lines, playbackTime) {
   }
   return answer;
 }
+function setExactLyricsProgress(progress = 0, text = '') {
+  const safe = Math.max(0, Math.min(100, Number(progress) || 0));
+  if (exactLyricsProgressFill) exactLyricsProgressFill.style.width = `${safe}%`;
+  if (exactLyricsProgressText && text) exactLyricsProgressText.textContent = text;
+  if (exactLyricsProgress) exactLyricsProgress.setAttribute('aria-hidden', exactLyricsEnabled ? 'false' : 'true');
+}
+function syncExactLyricsSettingUi() {
+  if (!exactLyricsBtn) return;
+  exactLyricsBtn.classList.toggle('is-on', exactLyricsEnabled);
+  exactLyricsBtn.classList.toggle('exact-disabled', !exactLyricsEnabled);
+  exactLyricsBtn.setAttribute('aria-pressed', String(exactLyricsEnabled));
+  exactLyricsBtn.disabled = !currentSong?.title;
+  if (exactLyricsState) exactLyricsState.textContent = exactLyricsEnabled ? 'ON' : 'OFF';
+  exactLyricsBtn.title = exactLyricsEnabled
+    ? 'Exact Lyrics is ON for this song. Click to turn it OFF and return to the base lyrics engine.'
+    : 'Turn Exact Lyrics ON for this song. The scan starts automatically.';
+  if (exactLyricsProgress) exactLyricsProgress.setAttribute('aria-hidden', exactLyricsEnabled ? 'false' : 'true');
+}
+function setExactLyricsEnabled(value, notify = false) {
+  exactLyricsEnabled = !!value;
+  if (!exactLyricsEnabled) {
+    lyricsRequest++; // invalidate any in-flight Exact Lyrics UI result
+    setExactLyricsProgress(0, 'Ready when you need exact lyrics.');
+  } else {
+    setExactLyricsProgress(0, 'Starting Exact Lyrics…');
+  }
+  syncExactLyricsSettingUi();
+  setExactLyricsButtonState('idle');
+  if (notify) showToast(exactLyricsEnabled ? 'Exact Lyrics ON · exact scan starting' : 'Exact Lyrics OFF · base lyrics engine only');
+}
+function resetExactLyricsForSong(song) {
+  const id = String(song?.id || song?.url || song?.title || '');
+  if (id && id === exactLyricsSongId) return;
+  exactLyricsSongId = id;
+  exactLyricsEnabled = false;
+  syncExactLyricsSettingUi();
+  setExactLyricsProgress(0, 'Ready when you need exact lyrics.');
+  setExactLyricsButtonState('idle');
+}
+function setExactLyricsButtonState(mode = 'idle', label = '') {
+  if (!exactLyricsBtn) return;
+  exactLyricsBtn.classList.toggle('exact-working', mode === 'working');
+  exactLyricsBtn.classList.toggle('exact-verified', mode === 'verified');
+  exactLyricsBtn.classList.toggle('exact-error', mode === 'error');
+  exactLyricsBtn.classList.toggle('exact-disabled', !exactLyricsEnabled);
+  exactLyricsBtn.classList.toggle('is-on', exactLyricsEnabled);
+  exactLyricsBtn.disabled = !currentSong?.title;
+  exactLyricsBtn.setAttribute('aria-pressed', String(exactLyricsEnabled));
+  if (exactLyricsState) exactLyricsState.textContent = exactLyricsEnabled ? 'ON' : 'OFF';
+  if (!exactLyricsEnabled) setExactLyricsProgress(0, 'Ready when you need exact lyrics.');
+  else if (mode === 'idle' && label) setExactLyricsProgress(0, label);
+}
 window.echoAPI.onLyricsStatus?.((status) => {
   if (!status?.text || !lyricsQuery) return;
   const sameSong = status.songId ? status.songId === lyricsQuery.id : status.title === lyricsQuery.title;
   if (!sameSong) return;
-  if (['lookup','fallback','audio','model','transcribe'].includes(status.stage)) {
+  if (status.exact || String(status.stage || '').startsWith('exact-')) {
+    if (!exactLyricsEnabled) return;
+    const progress = Math.max(0, Math.min(100, Number(status.progress) || 0));
+    const ready = status.stage === 'exact-ready';
+    setExactLyricsButtonState(ready ? 'verified' : 'working');
+    setExactLyricsProgress(ready ? 100 : progress, status.text || (ready ? 'Exact Lyrics ready.' : 'Building Exact Lyrics…'));
+    // Exact Lyrics is explicitly user-invoked. Keep already-visible lyrics readable while
+    // the lyric video is searched/OCR'd; only the source/status line changes until success.
+    lyricsSource.textContent = status.text;
+    return;
+  }
+  if (['lookup','fallback','audio','model','transcribe','timing'].includes(status.stage)) {
     // Never wipe already-visible lyrics while a background timing/transcription upgrade runs.
     // Wiping the DOM used to make highlighting appear randomly "stuck" until the async job ended.
     const visibleLyrics = !!lyricsBody.querySelector('.lyric-line');
-    if (!visibleLyrics) lyricsBody.innerHTML = `<p class="hint lyrics-ai-status">${escapeHtml(status.text)}</p>`;
+    const unavailable = /unavailable|could not|not found|failed|missing|no lyrics/i.test(String(status.text || ''));
+    if (!visibleLyrics && unavailable) {
+      lyricsBody.innerHTML = `<div class="lyrics-exact-fallback"><strong>Base lyrics abhi available nahi hain.</strong><span>${escapeHtml(status.text)}</span><span>Please check the <b>Exact Lyrics</b> option available at the top. Switch it ON and DEEP-ECHO will automatically start the lyrical-video rescue.</span></div>`;
+      lyricsSource.textContent = 'Base lyrics unavailable · Exact Lyrics rescue available above';
+    } else if (!visibleLyrics) lyricsBody.innerHTML = `<p class="hint lyrics-ai-status">${escapeHtml(status.text)}</p>`;
     else lyricsSource.textContent = status.text;
-    if (status.stage === 'model' && !visibleLyrics) lyricsSource.textContent = 'DEEP-ECHO AI · one-time local setup';
-    else if (status.stage === 'transcribe' && !visibleLyrics) lyricsSource.textContent = 'DEEP-ECHO AI · local audio transcription';
+    if (!unavailable && status.stage === 'model' && !visibleLyrics) lyricsSource.textContent = 'DEEP-ECHO AI · one-time local setup';
+    else if (!unavailable && status.stage === 'transcribe' && !visibleLyrics) lyricsSource.textContent = 'DEEP-ECHO AI · local audio transcription';
   }
 });
 
@@ -2834,7 +2913,8 @@ async function loadLyricsFor(song, keepFields = false) {
       url: song.url || '',
       streamUrl: song.streamUrl || '',
       filepath: song.filepath || '',
-      manual: !!keepFields
+      manual: !!keepFields,
+      exactLyricsEnabled
     });
     if (request !== lyricsRequest || res?.cancelled) return;
     // A lyrics response is valid only for the track that is still authoritative in the player.
@@ -2869,7 +2949,11 @@ async function loadLyricsFor(song, keepFields = false) {
         }).catch(()=>{});
       }
     } else if (res?.instrumental) lyricsBody.innerHTML = '<p class="hint">Instrumental · is track mein vocals nahi hain.</p>';
-    else lyricsBody.innerHTML = `<p class="hint">${escapeHtml(res?.error || 'Lyrics nahi mili.')}</p>`;
+    else {
+      const reason = escapeHtml(res?.error || 'Base lyrics nahi mili.');
+      lyricsBody.innerHTML = `<div class="lyrics-exact-fallback"><strong>Base lyrics could not be verified.</strong><span>${reason}</span><span>Please check the <b>Exact Lyrics</b> option available at the top. Switch it ON and DEEP-ECHO will automatically start the lyrical-video rescue.</span></div>`;
+      lyricsSource.textContent = 'Base lyrics unavailable · Exact Lyrics rescue available above';
+    }
     if (res?.source) {
       const type = lyricLines.length ? 'Synced lyrics' : 'Lyrics';
       const ai = res.transcription ? ' · AI transcribed' : '';
@@ -2882,7 +2966,8 @@ async function loadLyricsFor(song, keepFields = false) {
       const upgradeRequest = request;
       window.echoAPI.upgradeLyricsCaptions({
         id:song.id,title:song.title,channel:song.channel,duration:song.duration,url:song.url||'',
-        lyrics:res.lyrics||'',syncedLyrics:res.syncedLyrics||'',source:res.source||''
+        streamUrl:currentSong?.streamUrl||song.streamUrl||'',filepath:currentSong?.filepath||song.filepath||'',
+        lyrics:res.lyrics||'',syncedLyrics:res.syncedLyrics||'',source:res.source||'',timingPrecision:res.timingPrecision||''
       }).then(upgrade => {
         if (upgradeRequest !== lyricsRequest || !upgrade?.syncedLyrics) return;
         if (song?.id && currentSong?.id && String(song.id) !== String(currentSong.id)) return;
@@ -2898,9 +2983,76 @@ async function loadLyricsFor(song, keepFields = false) {
       }).catch(()=>{});
     }
   } catch (error) {
-    if (request === lyricsRequest) lyricsBody.textContent = 'Lyrics load nahi hui. Retry dabao.';
+    if (request === lyricsRequest) { lyricsBody.innerHTML = '<div class="lyrics-exact-fallback"><strong>Base lyrics load nahi hui.</strong><span>Retry kar sakte ho, ya top par available <b>Exact Lyrics</b> switch ON karo; rescue automatically start ho jayega.</span></div>'; lyricsSource.textContent = 'Base lyrics unavailable · Exact Lyrics rescue available above'; }
   }
 }
+async function runExactLyrics(force = false) {
+  if (!exactLyricsEnabled) { showToast('Exact Lyrics OFF hai · Lyrics ke top wale switch ko is song ke liye ON karo.'); return; }
+  if (!currentSong?.title) { showToast('Pehle song play karo, phir Exact Lyrics use karo.'); return; }
+  if (!window.echoAPI.getExactLyrics) { showToast('Exact Lyrics engine is unavailable in this build.'); return; }
+  const request = ++lyricsRequest;
+  const song = {
+    ...normalizeSong(currentSong),
+    streamUrl: currentSong.streamUrl || '',
+    filepath: currentSong.filepath || '',
+    url: currentSong.url || '',
+    exactTitle: lyricsTitleInput?.value?.trim() || '',
+    exactArtist: lyricsArtistInput?.value?.trim() || ''
+  };
+  lyricsQuery = song;
+  setExactLyricsButtonState('working');
+  setExactLyricsProgress(3, force ? 'Fresh lyrical-video scan starting…' : 'Checking verified cache and lyrical videos…');
+  lyricsSource.textContent = force ? 'Exact Lyrics · fresh lyrical-video scan starting…' : 'Exact Lyrics · checking verified cache and lyrical videos…';
+  try {
+    const res = await window.echoAPI.getExactLyrics(song, { force:!!force });
+    if (request !== lyricsRequest || res?.cancelled) return;
+    if (song?.id && currentSong?.id && String(song.id) !== String(currentSong.id)) return;
+    if (!res?.syncedLyrics && !res?.lyrics) {
+      setExactLyricsButtonState('error');
+      setExactLyricsProgress(0, res?.error || 'Could not verify a reliable lyric video · switch OFF and ON to retry.');
+      lyricsSource.textContent = res?.error || 'Exact Lyrics could not verify a reliable lyric video.';
+      showToast(res?.error || 'Exact Lyrics match nahi mila.');
+      return;
+    }
+    applyLyricsTimingPayload(res);
+    if (typeof smartCaptureLyricsPayload === 'function') smartCaptureLyricsPayload(res);
+    lyricLines = res.syncedLyrics ? parseLrc(res.syncedLyrics) : [];
+    activeLyric = -1;
+    if (lyricLines.length) {
+      lyricsBody.innerHTML = lyricLines.map((line,i)=>`<p class="lyric-line" data-line="${i}">${escapeHtml(line.text)||'♪'}</p>`).join('');
+      setLyricsAutoFollow(true); syncLyrics(true); startLyricTicker();
+    } else {
+      lyricsBody.innerHTML = String(res.lyrics || '').split(/\r?\n/).map(line=>`<p class="lyric-line plain">${escapeHtml(line)||'&nbsp;'}</p>`).join('');
+    }
+    const confidence = Number(res.exactConfidence || 0);
+    const confidenceText = confidence ? ` · ${Math.round(confidence * 100)}% confidence` : '';
+    const cacheText = res.exactCached ? ' · local verified cache' : '';
+    lyricsSource.textContent = `${lyricLines.length ? 'Synced lyrics' : 'Lyrics'} · ${res.source || 'Exact Lyrics'}${confidenceText}${cacheText}`;
+    setExactLyricsButtonState('verified');
+    setExactLyricsProgress(100, res.exactCached ? 'Exact Lyrics ready · verified local cache.' : 'Exact Lyrics ready · lyric video matched and synced.');
+    if (typeof smartPrepareKaraokeWords === 'function') smartPrepareKaraokeWords();
+    showToast(res.exactCached ? 'Exact Lyrics loaded from verified cache' : 'Exact Lyrics ready · lyric video matched and synced');
+  } catch (error) {
+    if (request !== lyricsRequest) return;
+    setExactLyricsButtonState('error');
+    setExactLyricsProgress(0, 'Exact Lyrics failed · switch OFF and ON to retry.');
+    lyricsSource.textContent = 'Exact Lyrics failed · existing lyrics kept';
+    showToast('Exact Lyrics failed: ' + (error?.message || 'Unknown error'));
+  }
+}
+exactLyricsBtn?.addEventListener('click', async () => {
+  if (!currentSong?.title) { showToast('Pehle song play karo, phir Exact Lyrics use karo.'); return; }
+  if (exactLyricsEnabled) {
+    setExactLyricsEnabled(false, true);
+    // Switching OFF returns this song to the normal Precision Sync/base lyrics path.
+    loadLyricsFor(currentSong).catch(()=>{});
+    return;
+  }
+  setExactLyricsEnabled(true, true);
+  await runExactLyrics(false);
+});
+setExactLyricsButtonState('idle');
+
 function scrollActiveLyricStable(line, force = false) {
   const mainScroller = document.querySelector('main');
   if (!mainScroller || !line) return;
@@ -3060,7 +3212,7 @@ function resolveLiveCursorState(target) {
   if (!(target instanceof Element)) return 'normal';
   if (target.closest('#immersiveLikeBtn')) return 'like';
   if (target.closest('#lyricsBody, .lyric-line, .lyrics-heading, input:not([type="range"]), textarea, [contenteditable="true"]')) return 'text';
-  if (target.closest('button, a, [role="button"], .nav-item, .song-card, .song-row, .playlist-card, .theme-option, .player-action-btn, .queue-item, .queue-meta, input[type="range"], select, label[for]')) return 'action';
+  if (target.closest('button, a, [role="button"], [role="slider"], .deepecho-shelf-slider, .nav-item, .song-card, .song-row, .playlist-card, .theme-option, .player-action-btn, .queue-item, .queue-meta, input[type="range"], select, label[for]')) return 'action';
   return 'normal';
 }
 
@@ -3320,6 +3472,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateHome
 // ================= Startup =================
 (async function init() {
   updateHomeMoment(true);
+  syncExactLyricsSettingUi();
   updateLyricsVisual(null);
   applyTheme(localStorage.getItem(STORAGE.theme) || 'golden');
   applyLyricsThemeFx(localStorage.getItem(STORAGE.lyricsThemeFx) !== 'false');
@@ -4289,23 +4442,45 @@ function smartWordKey(value=''){
 }
 function smartExactWordTimings(){
   const list=Array.isArray(smartLastLyricsPayload?.wordTimings)?smartLastLyricsPayload.wordTimings:[];
-  return list.map(item=>({text:String(item?.text||''),key:smartWordKey(item?.text),time:Number(item?.time),end:Number(item?.end)})).filter(item=>item.key&&Number.isFinite(item.time)).sort((a,b)=>a.time-b.time);
+  return list.map(item=>({text:String(item?.text||''),key:smartWordKey(item?.text),time:Number(item?.time),end:Number(item?.end),estimated:!!item?.estimated})).filter(item=>item.key&&Number.isFinite(item.time)).sort((a,b)=>a.time-b.time);
+}
+function smartEstimatedLineWordTimes(index,words){
+  const start=Number(lyricLines[index]?.time)||0;
+  const next=Number(lyricLines[index+1]?.time);
+  const natural=Math.max(1.6,Math.min(8.5,words.length*.46));
+  const rawEnd=Number.isFinite(next)&&next>start+.35?next:start+natural;
+  const end=Math.min(rawEnd,start+Math.max(2.2,natural*1.28));
+  const usable=Math.max(.5,end-start);
+  const weights=words.map(word=>Math.max(1,smartWordKey(word.textContent).length*.72));
+  const total=Math.max(1,weights.reduce((a,b)=>a+b,0));
+  let acc=0;
+  return words.map((word,wi)=>{
+    const at=start+usable*(acc/total); acc+=weights[wi];
+    const to=start+usable*(acc/total);
+    return {text:word.textContent||'',key:smartWordKey(word.textContent),time:at,end:Math.max(at+.08,to),estimated:true};
+  });
 }
 function smartAssignWordTimes(line,index,words,exact){
   if(!words.length)return 'line';
+  words.forEach(word=>{delete word.dataset.wordTime;delete word.dataset.wordEnd;delete word.dataset.wordExact;delete word.dataset.wordEstimated;delete word.dataset.wordInterpolated;});
   const start=Number(lyricLines[index]?.time)||0; const next=Number(lyricLines[index+1]?.time); const end=Number.isFinite(next)&&next>start?next:start+Math.max(2.2,Math.min(7.5,words.length*.52));
-  const candidates=exact.filter(item=>item.time>=Math.max(0,start-.6)&&item.time<=end+.65); let cursor=0,matched=0;
+  const candidates=exact.filter(item=>item.time>=Math.max(0,start-.7)&&item.time<=end+.75); let cursor=0,matched=0;
   for(let wi=0;wi<words.length;wi++){const key=smartWordKey(words[wi].textContent);if(!key)continue;let hit=-1;for(let ci=cursor;ci<candidates.length;ci++){if(candidates[ci].key===key){hit=ci;break;}}if(hit<0)continue;const item=candidates[hit];words[wi].dataset.wordTime=String(item.time);if(Number.isFinite(item.end))words[wi].dataset.wordEnd=String(item.end);words[wi].dataset.wordExact='true';cursor=hit+1;matched++;}
   const ratio=matched/Math.max(1,words.length);
   if(matched>=Math.min(2,words.length)&&ratio>=.5){
     for(let wi=0;wi<words.length;wi++){if(words[wi].dataset.wordTime)continue;let p=wi-1,n=wi+1;while(p>=0&&!words[p].dataset.wordTime)p--;while(n<words.length&&!words[n].dataset.wordTime)n++;if(p>=0&&n<words.length){const a=Number(words[p].dataset.wordTime),b=Number(words[n].dataset.wordTime);words[wi].dataset.wordTime=String(a+(b-a)*((wi-p)/(n-p)));words[wi].dataset.wordInterpolated='true';}}
     line.dataset.wordTiming='exact';return 'exact';
   }
-  words.forEach(word=>{delete word.dataset.wordTime;delete word.dataset.wordEnd;delete word.dataset.wordExact;delete word.dataset.wordInterpolated;});line.dataset.wordTiming='line';return 'line';
+  // Exact Lyrics from OCR and some providers only have line-level timestamps. Instead of
+  // silently making Word by Word do nothing, derive a conservative per-word timeline inside
+  // each already-synced line. Real caption word timings still win whenever they match.
+  const estimated=smartEstimatedLineWordTimes(index,words);
+  estimated.forEach((item,wi)=>{words[wi].dataset.wordTime=String(item.time);words[wi].dataset.wordEnd=String(item.end);words[wi].dataset.wordEstimated='true';});
+  line.dataset.wordTiming='estimated';return 'estimated';
 }
 function smartRefreshWordByWordControl(){
   if(wordByWordToggle){wordByWordToggle.setAttribute('aria-pressed',String(smartWordByWordEnabled));wordByWordToggle.classList.toggle('active',smartWordByWordEnabled);}if(wordByWordState)wordByWordState.textContent=smartWordByWordEnabled?'ON':'OFF';document.body.classList.toggle('word-by-word-off',!smartWordByWordEnabled);
-  if(wordByWordToggle&&smartWordByWordEnabled){const exact=!!lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]');wordByWordToggle.title=exact?'Word by Word ON · exact caption timing available':'Word by Word ON · exact word timing unavailable for this track, so safe line sync is used';}
+  if(wordByWordToggle&&smartWordByWordEnabled){const exact=!!lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]');const estimated=!!lyricsBody?.querySelector('.lyric-line[data-word-timing="estimated"]');wordByWordToggle.title=exact?'Word by Word ON · exact caption word timing':estimated?'Word by Word ON · synced line timing refined into smooth word timing':'Word by Word ON · waiting for synced lyric timing';}
 }
 function smartRestoreLineOnlyLyrics(root = lyricsBody){
   if(!root)return;
@@ -4329,14 +4504,14 @@ function smartSetWordByWord(enabled,{announce=false}={}){
     smartRestoreLineOnlyLyrics(immersiveLyricsBody);
     syncLyrics(true);
   }
-  if(announce)showToast(smartWordByWordEnabled?(lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]')?'Word by Word ON · exact timing':'Word by Word ON · exact word timing unavailable, line sync active'):'Word by Word OFF · clean line-by-line lyrics');
+  if(announce){const exact=!!lyricsBody?.querySelector('.lyric-line[data-word-timing="exact"]');const estimated=!!lyricsBody?.querySelector('.lyric-line[data-word-timing="estimated"]');showToast(smartWordByWordEnabled?(exact?'Word by Word ON · exact timing':estimated?'Word by Word ON · smooth derived word timing':'Word by Word ON · exact word timing unavailable, line sync active until synced timing is ready'):'Word by Word OFF · clean line-by-line lyrics');}
 }
 function smartPrepareKaraokeWords(){
   if(!smartWordByWordEnabled){smartRestoreLineOnlyLyrics(lyricsBody);smartRefreshWordByWordControl();return;}
   const exact=smartExactWordTimings();lyricsBody?.querySelectorAll('.lyric-line[data-line]').forEach((line,index)=>{if(!line.querySelector('.karaoke-word')){const text=line.textContent||'';line.textContent='';const parts=text.split(/(\s+)/);parts.forEach(part=>{if(/^\s+$/.test(part)){line.appendChild(document.createTextNode(part));return;}const span=document.createElement('span');span.className='karaoke-word';span.textContent=part;line.appendChild(span);});}smartAssignWordTimes(line,index,[...line.querySelectorAll('.karaoke-word')],exact);});smartRefreshWordByWordControl();smartUpdateKaraoke();
 }
 function smartPaintWordState(root,t){
-  root?.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{const words=[...line.querySelectorAll('.karaoke-word')];if(!words.length)return;words.forEach(word=>word.classList.remove('lit','word-current'));if(!smartWordByWordEnabled||line.dataset.wordTiming!=='exact')return;let current=-1;words.forEach((word,idx)=>{const at=Number(word.dataset.wordTime);if(Number.isFinite(at)&&t>=at){word.classList.add('lit');current=idx;}});if(i===activeLyric&&current>=0&&current<words.length)words[current].classList.add('word-current');if(i<activeLyric)words.forEach(word=>{if(word.dataset.wordTime)word.classList.add('lit');});});
+  root?.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{const words=[...line.querySelectorAll('.karaoke-word')];if(!words.length)return;words.forEach(word=>word.classList.remove('lit','word-current'));if(!smartWordByWordEnabled||!['exact','estimated'].includes(line.dataset.wordTiming))return;let current=-1;words.forEach((word,idx)=>{const at=Number(word.dataset.wordTime);if(Number.isFinite(at)&&t>=at){word.classList.add('lit');current=idx;}});if(i===activeLyric&&current>=0&&current<words.length)words[current].classList.add('word-current');if(i<activeLyric)words.forEach(word=>{if(word.dataset.wordTime)word.classList.add('lit');});});
 }
 function smartUpdateKaraoke(){if(!lyricLines.length)return;const t=lyricsPlaybackClock();smartPaintWordState(lyricsBody,t);if(typeof smartUpdateImmersiveKaraoke==='function')smartUpdateImmersiveKaraoke();}
 wordByWordToggle?.addEventListener('click',()=>smartSetWordByWord(!smartWordByWordEnabled,{announce:true}));smartRefreshWordByWordControl();

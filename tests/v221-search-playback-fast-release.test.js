@@ -8,7 +8,7 @@ const css=fs.readFileSync('src/v220-home-search.css','utf8');
 const workflow=fs.readFileSync('.github/workflows/release-windows.yml','utf8');
 
 test('v2.2.1 search rows single-click to play and remote switching pauses stale audio immediately',()=>{
-  assert.match(pkg.version,/^2\.(?:2\.\d+|3\.0)$/);
+  assert.match(pkg.version,/^2\.(?:2\.\d+|[3-9]\.\d+)$/);
   assert.match(renderer,/\['search', 'artist-search'\]\.includes\(contextSpec\.type\)/);
   assert.match(renderer,/if \(!audioPlayer\.paused\) audioPlayer\.pause\(\)/);
   assert.match(renderer,/Loading…/);

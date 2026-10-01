@@ -12,6 +12,12 @@
 <link rel="stylesheet" href="v200.css" />
 <link rel="stylesheet" href="v220-home-search.css" />
 <link rel="stylesheet" href="v228-visual-polish.css" />
+<link rel="stylesheet" href="v236-discovery-shelves.css" />
+<link rel="stylesheet" href="v238-smart-autoplay.css" />
+<link rel="stylesheet" href="v2310-smart-system.css" />
+<link rel="stylesheet" href="v2313-repair-artist.css" />
+<link rel="stylesheet" href="v2314-session-mixes-stats.css" />
+<link rel="stylesheet" href="v2315-global-playlist-open.css">
 </head>
 <body data-theme="golden">
 
@@ -21,7 +27,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><div class="brand-text">DEEP-ECHO</div></div>
-    <div class="v228-test-label">2.3.0</div>
+    <div class="v228-test-label">1.0 FINAL</div>
 
     <nav class="side-nav">
       <button class="nav-item active" data-tab="home">Home</button>
@@ -149,6 +155,18 @@
                 <button id="lyricsTranslationToggle" class="lyrics-fx-toggle" type="button" disabled title="Enabled when a translation is available">Translate</button>
                 <button id="v170KaraokeToggle" class="lyrics-fx-toggle" type="button" aria-pressed="false" title="Distraction-free karaoke layout"><span>Karaoke</span><strong id="v170KaraokeState">OFF</strong></button>
                 <button id="wordByWordToggle" class="lyrics-fx-toggle" type="button" aria-pressed="true" title="Highlight each word using exact available timing; falls back to line sync when exact word timing is unavailable"><span>Word by Word</span><strong id="wordByWordState">ON</strong></button>
+                <div id="exactLyricsControl" class="exact-lyrics-control">
+                  <button id="exactLyricsBtn" class="lyrics-fx-toggle exact-lyrics-toggle" type="button" aria-pressed="false" title="Turn Exact Lyrics on for this song. DEEP-ECHO will find the best lyric video, read it locally, and sync it to the current track.">
+                    <span class="exact-lyrics-icon" aria-hidden="true">✦</span>
+                    <span class="exact-lyrics-label">Exact Lyrics</span>
+                    <span class="exact-lyrics-switch-ui" aria-hidden="true"><i></i></span>
+                    <strong id="exactLyricsState">OFF</strong>
+                  </button>
+                  <div id="exactLyricsProgress" class="exact-lyrics-progress" aria-hidden="true">
+                    <div class="exact-lyrics-progress-track"><span id="exactLyricsProgressFill"></span></div>
+                    <small id="exactLyricsProgressText">Ready when you need exact lyrics.</small>
+                  </div>
+                </div>
                 <button id="v170LyricsMinus" class="lyrics-fx-toggle lyrics-offset-step" type="button" title="This song lyrics 0.5 seconds earlier">−0.5s</button>
                 <button id="v170LyricsPlus" class="lyrics-fx-toggle lyrics-offset-step" type="button" title="This song lyrics 0.5 seconds later">+0.5s</button>
                 <button id="v170LyricsOffsetReset" class="lyrics-fx-toggle lyrics-offset-step" type="button" title="Reset this song's saved sync correction"><strong id="v170LyricsOffsetLabel">0.0s</strong></button>
@@ -431,6 +449,18 @@
                 <p class="setting-help">If the UI gets overloaded, DEEP-ECHO temporarily lowers canvas resolution before it ever touches playback or lyric timing.</p>
                 <label class="setting-select-row" for="v170SleepTimer"><span>Sleep timer</span><select id="v170SleepTimer"><option value="0">Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option><option value="end">End of song</option></select></label>
               </div>
+              <div class="setting-block gpu-selector-card" id="gpuSelectorCard">
+                <div class="setting-title-row"><span>Graphics Processor</span><strong id="gpuPreferenceState">Detecting…</strong></div>
+                <p class="setting-help">Game-style GPU preference for DEEP-ECHO. Auto lets Windows choose; selecting a detected adapter requests its power class on the next launch.</p>
+                <label class="setting-select-row" for="gpuPreferenceSelect"><span>Run DEEP-ECHO on</span><select id="gpuPreferenceSelect"><option value="auto">Auto · Windows decides</option></select></label>
+                <div id="gpuDetectedList" class="gpu-detected-list" aria-live="polite"></div>
+                <div class="gpu-selector-actions">
+                  <button id="gpuApplyRestartBtn" class="secondary-btn primary-outline" type="button">Apply + Restart</button>
+                  <button id="gpuRefreshBtn" class="secondary-btn" type="button">Refresh GPUs</button>
+                  <button id="gpuWindowsSettingsBtn" class="secondary-btn" type="button">Windows Graphics Settings</button>
+                </div>
+                <p id="gpuPreferenceHelp" class="setting-help">Windows/driver keeps final control of the physical adapter. The selector is applied before Chromium starts.</p>
+              </div>
             </div>
           </div>
 
@@ -444,7 +474,7 @@
               <div class="setting-block"><div class="setting-title-row"><span>Smart Offline</span><strong id="v160OfflineCount">0 songs</strong></div><div class="setting-inline-actions"><button id="v160CacheCurrent" class="secondary-btn">Cache Current</button><button id="v160RefreshOffline" class="secondary-btn">Scan Offline</button><button id="v160ClearCache" class="secondary-btn">Clear Cache</button></div><p class="setting-help">Downloaded + smart-cached audio can play without internet. Smart cache is separate from permanent Downloads.</p></div>
               <div class="setting-block"><div class="setting-title-row"><span>Windows Integration</span><strong>Native</strong></div><label class="switch-row"><span>Media Session metadata</span><input id="v160MediaSession" type="checkbox" checked></label><label class="switch-row"><span>Global shortcuts</span><input id="v160GlobalKeys" type="checkbox" checked></label></div>
               <div class="setting-block"><div class="setting-title-row"><span>Audio Output Manager</span><strong id="v160OutputState">Default</strong></div><select id="v160OutputSelect"><option value="">System Default</option></select><button id="v160RefreshOutputs" class="secondary-btn">Refresh Devices</button></div>
-              <div class="setting-block"><div class="setting-title-row"><span>Lyrics Pro</span><strong id="v160OffsetLabel">0 ms</strong></div><label>Sync offset <input id="v160LyricsOffset" type="range" min="-3000" max="3000" step="50" value="0"></label><button id="v160OffsetReset" class="secondary-btn">Reset Offset</button></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Lyrics Pro</span><strong id="v160OffsetLabel">0 ms</strong></div><label>Sync offset <input id="v160LyricsOffset" type="range" min="-3000" max="3000" step="50" value="0"></label><button id="v160OffsetReset" class="secondary-btn">Reset Offset</button><div class="setting-title-row exact-lyrics-setting-state"><span>Exact Lyrics rescue</span><strong>Per song</strong></div><p class="setting-help">Exact Lyrics now has one switch in the Lyrics page. Every new song starts OFF; turn that switch ON only when the base lyrics are missing, wrong or poorly synced. Precision Sync always stays active.</p></div>
               <div class="setting-block"><div class="setting-title-row"><span>Download Manager</span><strong id="v160DownloadState">Idle</strong></div><button id="v160DownloadCurrent" class="secondary-btn">Queue Current Song</button><div id="v160DownloadQueue" class="setting-help">Queue empty</div></div>
               <div class="setting-block"><div class="setting-title-row"><span>Performance Mode</span><strong id="v160PerfState">Balanced</strong></div><select id="v160Perf"><option value="quality">Quality</option><option value="balanced" selected>Balanced</option><option value="performance">Performance</option></select><p class="setting-help">Reduces expensive visual effects only in Performance mode.</p></div>
               <div class="setting-block game-mode-card"><div class="setting-title-row"><span>Game Mode</span><strong id="v163GameState">Ready</strong></div><label class="switch-row"><span>Game Mode</span><input id="v163GameMode" type="checkbox"></label><label class="switch-row"><span>Auto when DEEP-ECHO is in background</span><input id="v163GameAuto" type="checkbox" checked></label><p class="setting-help">Keeps audio/Next working while suspending expensive visuals, animation and early prefetch. Restores the UI automatically when you return.</p></div>
@@ -607,6 +637,7 @@
       <div class="immersive-visual-stage">
         <canvas id="immersiveVisualizerCanvas" width="760" height="760" aria-hidden="true"></canvas>
         <img id="immersiveArt" src="assets/dinecho-logo.png" alt=""/>
+        <video id="immersiveVideo" class="immersive-song-video" muted playsinline preload="metadata" aria-label="Current song video"></video>
       </div>
       <div class="immersive-meta"><p>NOW PLAYING</p><h1 id="immersiveTitle">Nothing playing</h1><h3 id="immersiveArtist"></h3></div>
       <div class="immersive-controls">
@@ -616,6 +647,7 @@
         <button id="immersiveNextBtn" type="button" aria-label="Next song">▶</button>
         <button id="immersiveForward10Btn" class="immersive-seek" type="button" aria-label="Forward 10 seconds" title="Forward 10 seconds">↷<small>10</small></button>
         <button id="immersiveLikeBtn" class="immersive-like" type="button" aria-label="Like song" title="Like song">♡</button>
+        <button id="immersiveVideoToggleBtn" class="immersive-video-toggle" type="button" aria-pressed="false" title="Show the current song video inside Immersive Player">See While Playing</button>
       </div>
       <div class="immersive-progress">
         <span id="immersiveCur">0:00</span>
@@ -657,5 +689,11 @@
 <script src="v200.js"></script>
 <script src="v220-home-search.js"></script>
 <script src="v228-visual-polish.js"></script>
+<script src="v236-discovery-shelves.js"></script>
+<script src="v238-smart-autoplay.js"></script>
+<script src="v2310-smart-system.js"></script>
+<script src="v2313-repair-artist.js"></script>
+<script src="v2314-session-mixes-stats.js"></script>
+<script src="v2315-global-playlist-open.js"></script>
 </body>
 </html>

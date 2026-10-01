@@ -1,4 +1,4 @@
-name: Build and publish DEEP-ECHO 2.3.0
+name: Build and publish DEEP-ECHO 1.0 FINAL (v2.5.0)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
       RELEASE_REPO: windowsdaiyu-cyber/DEEP-ECHO-Releases
-      RELEASE_TITLE: DEEP-ECHO 2.3.0
+      RELEASE_TITLE: DEEP-ECHO 1.0 FINAL
 
     steps:
       - name: Checkout source
@@ -43,8 +43,8 @@ jobs:
           if ($packageVersion -ne $tagVersion) {
             throw "Tag v$tagVersion does not match package.json version $packageVersion"
           }
-          if ($packageVersion -ne '2.3.0') {
-            throw "DEEP-ECHO 2.3 release must ship as semantic version 2.3.0, found $packageVersion"
+          if ($packageVersion -ne '2.5.0') {
+            throw "DEEP-ECHO 1.0 FINAL must ship as semantic update version 2.5.0, found $packageVersion"
           }
           gh api "repos/$env:RELEASE_REPO" --jq '.full_name' | Out-Null
 
@@ -85,7 +85,7 @@ jobs:
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
-          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.3.0.md --latest
+          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.5.0.md --latest
           gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,url,assets
 
       - name: Verify latest updater assets
@@ -106,7 +106,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: deep-echo-2.3.0-build-debug
+          name: deep-echo-2.5.0-build-debug
           path: |
             dist/**
             builder-debug.yml

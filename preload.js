@@ -5,7 +5,9 @@ contextBridge.exposeInMainWorld('echoAPI', {
   search: (query) => ipcRenderer.invoke('search-music', query),
   searchSuggestions: (query) => ipcRenderer.invoke('search-suggestions', query),
   searchArtist: (query) => ipcRenderer.invoke('search-artist', query),
-  getHomeFeed: () => ipcRenderer.invoke('get-home-feed'),
+  getHomeFeed: (force = false) => ipcRenderer.invoke('get-home-feed', !!force),
+  getSmartAutoplayCandidates: (song, limit = 32) => ipcRenderer.invoke('smart-autoplay-candidates', song, limit),
+  getSongVideoStream: (song) => ipcRenderer.invoke('resolve-song-video', song),
   getLibrary: () => ipcRenderer.invoke('get-library'),
   streamSong: (song, requestId, quality) => ipcRenderer.invoke('stream-song', song, requestId, quality),
   prefetchSong: (song, quality) => ipcRenderer.invoke('prefetch-song', song, quality),
@@ -20,10 +22,14 @@ contextBridge.exposeInMainWorld('echoAPI', {
   smartCacheClear: () => ipcRenderer.invoke('smart-cache-clear'),
   deleteSong: (id) => ipcRenderer.invoke('delete-song', id),
   getLyrics: (song) => ipcRenderer.invoke('get-lyrics', song),
+  getExactLyrics: (song, options = {}) => ipcRenderer.invoke('get-exact-lyrics', song, options),
   upgradeLyricsCaptions: (song) => ipcRenderer.invoke('upgrade-lyrics-captions', song),
   syncPlainLyrics: (song, plainLyrics) => ipcRenderer.invoke('sync-plain-lyrics', song, plainLyrics),
   getYouTubeAccess: () => ipcRenderer.invoke('get-youtube-access'),
   setYouTubeAccess: (value) => ipcRenderer.invoke('set-youtube-access', value),
+  getGpuSettings: () => ipcRenderer.invoke('get-gpu-settings'),
+  setGpuPreference: (value) => ipcRenderer.invoke('set-gpu-preference', value),
+  openWindowsGraphicsSettings: () => ipcRenderer.invoke('open-windows-graphics-settings'),
   onLyricsStatus: (callback) => {
     ipcRenderer.removeAllListeners('lyrics-status');
     ipcRenderer.on('lyrics-status', (_event, status) => callback(status));

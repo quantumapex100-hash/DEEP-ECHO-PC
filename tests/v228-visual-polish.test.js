@@ -45,7 +45,7 @@ test('official 2.3 release removes test-only build labels while keeping visual p
   const html = read('src/index.html');
   const css = read('src/v228-visual-polish.css');
   const js = read('src/v228-visual-polish.js');
-  assert.match(html, />2\.3\.0<\/div>/);
+  assert.match(html, />1\.0 FINAL<\/div>/);
   assert.doesNotMatch(html, /V2 TEST|do not release/);
   assert.doesNotMatch(js, /V2 TEST|do not release|RELEASE_DISPLAY_LABEL/);
   assert.match(css, /remove the full overlay plane between lyrics and the visualizer/);

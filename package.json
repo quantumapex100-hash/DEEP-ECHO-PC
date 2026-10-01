@@ -1,7 +1,7 @@
 {
   "name": "deepeccho",
-  "version": "2.3.0",
-  "description": "DEEP-ECHO 2.3.0 - Floating Immersive Lyrics, upgraded Floating Lyrics and Mini Player",
+  "version": "2.5.0",
+  "description": "DEEP-ECHO 1.0 FINAL - technical update version 2.5.0",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",
@@ -13,9 +13,9 @@
     "release": "electron-builder --win --publish always"
   },
   "dependencies": {
-    "electron-updater": "6.6.2",
     "ffmpeg-static": "5.3.0",
-    "whisper-cpp-node": "0.2.12"
+    "whisper-cpp-node": "0.2.12",
+    "electron-updater": "6.6.2"
   },
   "devDependencies": {
     "electron": "^31.0.0",

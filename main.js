@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -9,6 +9,7 @@ const { getLyrics, withScriptVariants, isExplicitInstrumentalSong, scriptProfile
 const { getYouTubeLyrics, alignSyncedLyricsToCaptions } = require('./lib/youtube-captions');
 const { runTransfer, downloadDirectAudio } = require('./lib/transfer');
 const { transcribeSong } = require('./lib/auto-transcribe');
+const { exactLyricsFromVideo, exactCacheKey } = require('./lib/exact-lyrics');
 const { runYtDlpSmart, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
@@ -17,6 +18,77 @@ const YTDLP_PATH = path.join(app.getAppPath(), 'bin', 'yt-dlp.exe');
 const APP_DISPLAY_NAME = 'DEEP-ECHO';
 // Keep the original profile location when the installer/product name changes.
 app.setPath('userData', path.join(app.getPath('appData'), 'deepeccho'));
+
+// ---------- GPU preference (game-style low-power / high-performance routing) ----------
+const gpuPreferenceFile = path.join(app.getPath('userData'), 'gpu-preference.json');
+function classifyGpuAdapter(adapter = {}) {
+  const name = String(adapter.name || adapter.Name || '').trim();
+  const vendor = String(adapter.vendor || adapter.AdapterCompatibility || '').trim();
+  const hay = `${name} ${vendor}`.toLowerCase();
+  if (/nvidia|geforce|quadro|rtx|gtx/.test(hay)) return 'high-performance';
+  if (/radeon\s+(rx|pro)|amd\s+radeon\s+rx/.test(hay)) return 'high-performance';
+  if (/intel|uhd|iris|hd graphics|integrated/.test(hay)) return 'low-power';
+  if (/radeon\(tm\) graphics|amd radeon graphics/.test(hay) && !/rx/.test(hay)) return 'low-power';
+  return 'balanced';
+}
+function readGpuPreference() {
+  try {
+    const value = JSON.parse(fs.readFileSync(gpuPreferenceFile, 'utf8'));
+    const mode = ['auto','low-power','high-performance','balanced'].includes(value?.mode) ? value.mode : 'auto';
+    return { mode, adapterId:String(value?.adapterId || ''), adapterName:String(value?.adapterName || '') };
+  } catch { return { mode:'auto', adapterId:'', adapterName:'' }; }
+}
+function writeGpuPreference(value = {}) {
+  const next = {
+    mode: ['auto','low-power','high-performance','balanced'].includes(value?.mode) ? value.mode : 'auto',
+    adapterId: String(value?.adapterId || ''),
+    adapterName: String(value?.adapterName || '')
+  };
+  fs.mkdirSync(path.dirname(gpuPreferenceFile), { recursive:true });
+  fs.writeFileSync(gpuPreferenceFile, JSON.stringify(next, null, 2), 'utf8');
+  return next;
+}
+const bootGpuPreference = readGpuPreference();
+if (bootGpuPreference.mode === 'high-performance') app.commandLine.appendSwitch('force-high-performance-gpu');
+else if (bootGpuPreference.mode === 'low-power') app.commandLine.appendSwitch('force-low-power-gpu');
+
+async function detectGpuAdapters() {
+  const fallback = async () => {
+    try {
+      const info = await app.getGPUInfo('complete');
+      const devices = Array.isArray(info?.gpuDevice) ? info.gpuDevice : [];
+      return devices.map((d, i) => {
+        const name = d.deviceString || d.device || `GPU ${i + 1}`;
+        const adapter = { id:String(d.deviceId || d.vendorId || i), name:String(name), vendor:String(d.vendorString || d.vendorId || ''), driverVersion:String(d.driverVersion || '') };
+        adapter.classification = classifyGpuAdapter(adapter);
+        return adapter;
+      });
+    } catch { return []; }
+  };
+  if (process.platform !== 'win32') return fallback();
+  const command = [
+    '$ErrorActionPreference="SilentlyContinue";',
+    '$g=Get-CimInstance Win32_VideoController | Select-Object Name,AdapterCompatibility,PNPDeviceID,DriverVersion,VideoProcessor,AdapterRAM;',
+    '$g | ConvertTo-Json -Compress'
+  ].join(' ');
+  try {
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile','-ExecutionPolicy','Bypass','-Command',command], { windowsHide:true, timeout:7000, maxBuffer:1024*1024 });
+    const parsed = JSON.parse(String(stdout || '[]').trim() || '[]');
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    return rows.filter(Boolean).map((row, i) => {
+      const adapter = {
+        id: String(row.PNPDeviceID || row.Name || i),
+        name: String(row.Name || `GPU ${i + 1}`),
+        vendor: String(row.AdapterCompatibility || ''),
+        driverVersion: String(row.DriverVersion || ''),
+        videoProcessor: String(row.VideoProcessor || ''),
+        adapterRam: Number(row.AdapterRAM || 0) || 0
+      };
+      adapter.classification = classifyGpuAdapter(adapter);
+      return adapter;
+    });
+  } catch { return fallback(); }
+}
 const downloadJobs = new Map();
 const downloadControllers = new Map();
 let downloadQuality = 'best';
@@ -637,6 +709,35 @@ ipcMain.handle('get-app-fullscreen', (event) => {
 
 ipcMain.handle('get-youtube-access', () => readYouTubeAccess());
 ipcMain.handle('set-youtube-access', (_event, value) => ({ success: true, value: writeYouTubeAccess(value) }));
+ipcMain.handle('get-gpu-settings', async () => ({
+  success:true,
+  adapters:await detectGpuAdapters(),
+  preference:readGpuPreference(),
+  activeBootPreference:bootGpuPreference,
+  featureStatus:app.getGPUFeatureStatus?.() || {}
+}));
+ipcMain.handle('set-gpu-preference', async (_event, requested = {}) => {
+  const adapters = await detectGpuAdapters();
+  const requestedId = String(requested?.adapterId || '');
+  let next = { mode:'auto', adapterId:'', adapterName:'' };
+  if (requestedId && requestedId !== 'auto') {
+    const adapter = adapters.find(item => String(item.id) === requestedId);
+    if (!adapter) return { success:false, error:'Selected GPU is no longer available.' };
+    const mode = adapter.classification === 'high-performance' ? 'high-performance' : adapter.classification === 'low-power' ? 'low-power' : 'balanced';
+    next = { mode, adapterId:adapter.id, adapterName:adapter.name };
+  }
+  const saved = writeGpuPreference(next);
+  const restartRequired = JSON.stringify(saved) !== JSON.stringify(bootGpuPreference);
+  if (requested?.restart && restartRequired) {
+    setTimeout(() => { try { app.relaunch(); app.exit(0); } catch (_) {} }, 180);
+  }
+  return { success:true, preference:saved, restartRequired, adapters };
+});
+ipcMain.handle('open-windows-graphics-settings', async () => {
+  if (process.platform !== 'win32') return { success:false, error:'Windows Graphics Settings is only available on Windows.' };
+  try { await shell.openExternal('ms-settings:display-advancedgraphics'); return { success:true }; }
+  catch (error) { return { success:false, error:error?.message || String(error) }; }
+});
 
 app.whenReady().then(() => {
   app.setName(APP_DISPLAY_NAME);
@@ -697,6 +798,80 @@ async function searchMusic(query, limit = 20) {
   }
 }
 
+// ---------- Smart Autoplay related-song discovery ----------
+function smartAutoplayMapEntries(entries, seedId = '') {
+  const seen = new Set();
+  const out = [];
+  for (const e of entries || []) {
+    if (!e?.id || e.id === seedId || seen.has(e.id)) continue;
+    seen.add(e.id);
+    out.push({
+      id: e.id,
+      title: e.title || 'Untitled',
+      channel: e.channel || e.uploader || '',
+      duration: formatDuration(e.duration),
+      thumbnail: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
+      url: `https://www.youtube.com/watch?v=${e.id}`
+    });
+  }
+  return out;
+}
+
+async function getSmartAutoplayCandidates(seed, requestedLimit = 32) {
+  const song = seed && typeof seed === 'object' ? seed : {};
+  const id = String(song.id || '').trim();
+  const limit = Math.max(12, Math.min(48, Number(requestedLimit) || 32));
+  if (!fs.existsSync(YTDLP_PATH)) return { source: 'unavailable', items: [] };
+
+  // YouTube's automatic radio/mix is the closest free related-song signal we can use here.
+  // It is attempted first; normal ytsearch is the resilient fallback when a radio list is unavailable.
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) {
+    const radioLists = [`RDAMVM${id}`, `RD${id}`];
+    for (const listId of radioLists) {
+      try {
+        const radioUrl = `https://www.youtube.com/watch?v=${id}&list=${listId}`;
+        const { stdout } = await runYtDlpSmart(
+          YTDLP_PATH,
+          ['--flat-playlist', '--yes-playlist', '--no-warnings', '--playlist-end', String(limit + 4), '-J', radioUrl],
+          { maxBuffer: 24 * 1024 * 1024, timeout: 50000, purpose: 'search', browserAuth: readYouTubeAccess(), allowFallbackClients: true }
+        );
+        const data = JSON.parse(stdout);
+        const items = smartAutoplayMapEntries(data.entries || [], id).slice(0, limit);
+        if (items.length >= 6) return { source: 'youtube-radio', items };
+      } catch (err) {
+        console.warn('[smart autoplay radio] unavailable:', err?.message || err);
+      }
+    }
+  }
+
+  const title = String(song.title || '').replace(/\s+/g, ' ').trim();
+  const channel = String(song.channel || song.artist || '').replace(/\s+/g, ' ').trim();
+  const queries = [
+    `${title} ${channel} similar songs official audio`.trim(),
+    `${title} radio mix songs`.trim(),
+    channel ? `${channel} best songs official audio` : ''
+  ].filter(Boolean);
+  const settled = await Promise.allSettled(queries.map(q => searchMusic(q, Math.min(20, limit))));
+  const combined = [];
+  for (const result of settled) {
+    if (result.status !== 'fulfilled' || !Array.isArray(result.value)) continue;
+    combined.push(...result.value);
+  }
+  const seen = new Set();
+  const items = [];
+  for (const raw of combined) {
+    if (!raw?.id || raw.id === id || seen.has(raw.id)) continue;
+    seen.add(raw.id); items.push(raw);
+    if (items.length >= limit) break;
+  }
+  return { source: 'search-fallback', items };
+}
+
+ipcMain.handle('smart-autoplay-candidates', async (_event, seed, limit) => {
+  try { return await getSmartAutoplayCandidates(seed, limit); }
+  catch (err) { return { source: 'error', items: [], error: err?.message || String(err) }; }
+});
+
 // ---------- Search autocomplete (YouTube-style suggestions) ----------
 const searchSuggestionCache = new Map();
 async function searchSuggestions(query) {
@@ -739,15 +914,29 @@ ipcMain.handle('search-artist', async (_event, query) => {
 });
 
 // ---------- IPC: home feed ----------
-ipcMain.handle('get-home-feed', async () => {
-  const year = new Date().getFullYear();
-  const [topHits, topArtistSongs] = await Promise.all([
-    searchMusic(`top hits ${year} songs official audio`, 12),
-    searchMusic(`top artists hit songs ${year} official audio`, 12)
-  ]);
-  if (topHits && topHits.error) return topHits;
-  if (topArtistSongs && topArtistSongs.error) return topArtistSongs;
-  return { topHits, topArtistSongs };
+let homeFeedCache = { at: 0, data: null, job: null };
+ipcMain.handle('get-home-feed', async (_event, force = false) => {
+  if (!force && homeFeedCache.data && Date.now() - homeFeedCache.at < 20 * 60 * 1000) return homeFeedCache.data;
+  if (!force && homeFeedCache.job) return homeFeedCache.job;
+  const job = (async () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.toLocaleString('en-US', { month: 'long' });
+    const [topHits, topArtistSongs, newReleases] = await Promise.all([
+      searchMusic(`top hits ${year} songs official audio`, 18),
+      searchMusic(`top artists hit songs ${year} official audio`, 24),
+      searchMusic(`new songs ${month} ${year} latest releases official audio`, 24)
+    ]);
+    if (topHits && topHits.error) return topHits;
+    if (topArtistSongs && topArtistSongs.error) return topArtistSongs;
+    if (newReleases && newReleases.error) return newReleases;
+    const data = { topHits, topArtistSongs, popularArtistSongs: topArtistSongs, newReleases };
+    homeFeedCache = { at: Date.now(), data, job: null };
+    return data;
+  })();
+  homeFeedCache.job = job;
+  try { return await job; }
+  finally { if (homeFeedCache.job === job) homeFeedCache.job = null; }
 });
 
 // ---------- IPC: get library ----------
@@ -833,6 +1022,41 @@ ipcMain.handle('stream-song', async (event, song, requestId, quality = 'auto') =
       errorCode: bot ? 'YOUTUBE_BOT_CHECK' : (err?.code || ''),
       needsBrowserAuth: bot && !readYouTubeAccess().enabled,
       error: bot ? 'YouTube ne anonymous request ko bot-check se block kiya. Playback safe rakha gaya hai; Settings > YouTube Access me browser login fallback enable kar sakte ho.' : err.message
+    };
+  }
+});
+
+const immersiveVideoCache = new Map();
+const IMMERSIVE_VIDEO_TTL = 8 * 60 * 1000;
+async function resolveImmersiveVideoUrl(song) {
+  if (!song?.id || !song?.url) throw new Error('Song video URL missing.');
+  if (!fs.existsSync(YTDLP_PATH)) throw new Error('yt-dlp.exe nahi mila. Setup-YtDlp.bat pehle chalao.');
+  const key = String(song.id);
+  const cached = immersiveVideoCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  const format = 'bestvideo[vcodec^=avc1][height<=720][ext=mp4]/best[vcodec^=avc1][height<=720][ext=mp4]/bestvideo[height<=720][ext=mp4]/best[height<=720][ext=mp4]/bestvideo[height<=720]/best[height<=720]';
+  const { stdout } = await runYtDlpSmart(
+    YTDLP_PATH,
+    ['--no-warnings', '--no-playlist', '-f', format, '-g', song.url],
+    { maxBuffer: 4 * 1024 * 1024, timeout: 45000, purpose: 'immersive-video', browserAuth: readYouTubeAccess(), allowFallbackClients: true }
+  );
+  const url = String(stdout || '').split(/\r?\n/).map(v => v.trim()).find(v => /^https?:\/\//i.test(v));
+  if (!url) throw new Error('Playable video URL nahi mili.');
+  immersiveVideoCache.set(key, { url, expiresAt: Date.now() + IMMERSIVE_VIDEO_TTL });
+  if (immersiveVideoCache.size > 40) immersiveVideoCache.delete(immersiveVideoCache.keys().next().value);
+  return url;
+}
+
+ipcMain.handle('resolve-song-video', async (_event, song) => {
+  try {
+    const url = await resolveImmersiveVideoUrl(song);
+    return { success: true, url };
+  } catch (err) {
+    const bot = err?.code === 'YOUTUBE_BOT_CHECK' || isBotChallenge(err);
+    return {
+      success: false,
+      errorCode: bot ? 'YOUTUBE_BOT_CHECK' : (err?.code || ''),
+      error: bot ? 'YouTube video preview ko bot-check ne block kiya.' : (err?.message || 'Video preview unavailable.')
     };
   }
 });
@@ -1001,11 +1225,24 @@ ipcMain.handle('set-window-opacity', (event, value) => {
   return safe;
 });
 
-// Cache successful lyrics for offline use. v9 invalidates v8 timelines that may have
-// collapsed legitimate short/prefix English lines or rapid-fired grouped timestamps.
-const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v11.json');
+// Cache successful lyrics for offline use. V12 invalidates older timing data because
+// V9 Precision Sync now stores per-recording multi-anchor warped timelines.
+const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v12.json');
+const exactLyricsCachePath = path.join(app.getPath('userData'), 'exact-lyrics-cache-v1.json');
 const lyricsControllers = new Map();
 const lyricsTimingControllers = new Map();
+const lyricsUpgradeControllers = new Map();
+const exactLyricsControllers = new Map();
+
+function readJsonCache(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
+}
+function writeJsonCache(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive:true });
+  const temp = file + '.tmp';
+  fs.writeFileSync(temp, JSON.stringify(value), 'utf8');
+  fs.renameSync(temp, file);
+}
 
 function lyricsTextForLanguageCheck(result) {
   if (!result) return '';
@@ -1041,6 +1278,24 @@ function lyricsLanguageMismatch(result, youtube) {
 
 function hasLyricsText(result) {
   return !!(result && (String(result.syncedLyrics || '').trim() || String(result.lyrics || '').trim()));
+}
+
+function localLyricsAiTimingReady() {
+  try {
+    const modelPath = path.join(app.getPath('userData'), 'models', 'ggml-base-q5_1.bin');
+    return fs.existsSync(modelPath) && fs.statSync(modelPath).size > 40 * 1024 * 1024;
+  } catch { return false; }
+}
+
+function persistAutomaticLyricsResult(song, result) {
+  if (!song || !result || (!result.syncedLyrics && !result.lyrics && !result.instrumental)) return;
+  try {
+    const key = JSON.stringify([song.title, song.channel, song.duration || '', song.url || '', !!song.manual]);
+    let cache = {};
+    try { cache = JSON.parse(fs.readFileSync(lyricsCachePath, 'utf8')); } catch {}
+    cache[key] = { ...result, backgroundCaptionUpgrade:false };
+    writeJsonCache(lyricsCachePath, cache);
+  } catch (error) { console.warn('[lyrics timing cache]', error.message); }
 }
 
 function normalizeLyricWords(text) {
@@ -1108,6 +1363,15 @@ ipcMain.handle('get-lyrics', async (event, song) => {
   lyricsControllers.set(senderId, controller);
   const signal = controller.signal;
   const key = JSON.stringify([song.title, song.channel, song.duration || '', song.url || '', !!song.manual]);
+  // A user-verified Exact Lyrics result outranks catalogue/provider cache for future plays.
+  // Its canonical key intentionally ignores the particular YouTube upload so official video,
+  // audio and lyric-video variants can reuse the same locally verified lyrics.
+  const exactCache = readJsonCache(exactLyricsCachePath);
+  const exactKey = exactCacheKey(song);
+  if (song?.exactLyricsEnabled !== false && exactCache[exactKey]) {
+    if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId);
+    return { ...exactCache[exactKey], exactCached:true };
+  }
   let cache = {};
   try { cache = JSON.parse(fs.readFileSync(lyricsCachePath, 'utf8')); } catch {}
   if (cache[key]) { if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId); return cache[key]; }
@@ -1138,7 +1402,9 @@ ipcMain.handle('get-lyrics', async (event, song) => {
   if (canUseVideoInfo && !providerReady) {
     youtube = await getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, { signal, browserAuth: readYouTubeAccess(), tempRoot: path.join(cacheDir, 'lyrics-captions') });
     if (signal.aborted) return { cancelled:true };
-  } else if (providerReady && canUseVideoInfo) {
+  } else if (providerReady && (canUseVideoInfo || (canAutoTranscribe && localLyricsAiTimingReady()))) {
+    // Provider text appears immediately; V9 can calibrate it in the background against
+    // source-language captions or, when already installed, the exact local-audio AI timeline.
     result = { ...result, backgroundCaptionUpgrade:true };
   }
 
@@ -1221,28 +1487,146 @@ ipcMain.handle('get-lyrics', async (event, song) => {
   return result;
 });
 
-// Upgrade already-visible provider lyrics with exact source-language YouTube caption timing.
+// Upgrade already-visible provider lyrics against the ACTUAL playing recording.
+// First choice is source-language YouTube timing. V9 uses multi-anchor piecewise warping,
+// so intros/dialogue breaks/edit differences do not leave the whole LRC shifted. If usable
+// captions are missing and the local Whisper model already exists, the same provider text is
+// aligned to a local transcript in the background. This never blocks playback.
 ipcMain.handle('upgrade-lyrics-captions', async (event, song) => {
-  if (!song?.url || !fs.existsSync(YTDLP_PATH)) return { success:false };
+  const senderId = event.sender.id;
+  try { lyricsUpgradeControllers.get(senderId)?.abort(); } catch {}
   const controller = new AbortController();
+  lyricsUpgradeControllers.set(senderId, controller);
+  const signal = controller.signal;
+  const original = { lyrics:song?.lyrics||'', syncedLyrics:song?.syncedLyrics||'', source:song?.source||'Lyrics' };
+  const sendStatus = (payload) => {
+    try { event.sender.send('lyrics-status', { songId:song?.id||'', title:song?.title||'', ...payload }); } catch {}
+  };
   try {
-    const youtube = await getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, {
-      signal:controller.signal, browserAuth:readYouTubeAccess(), tempRoot:path.join(cacheDir,'lyrics-captions')
-    });
-    if (!youtube?.syncedLyrics) return { success:false };
-    const original = { lyrics:song.lyrics||'', syncedLyrics:song.syncedLyrics||'', source:song.source||'Lyrics' };
-    if (original.syncedLyrics) {
-      const aligned = alignSyncedLyricsToCaptions(original.syncedLyrics, youtube.syncedLyrics);
-      if (aligned && aligned.matched >= 2 && aligned.confidence >= .42) {
-        return withScriptVariants({ ...original, syncedLyrics:aligned.syncedLyrics,
-          source:`${original.source} text · ${youtube.source} timing`, timingPrecision:'youtube-aligned',
-          timingMatchCount:aligned.matched, timingConfidence:aligned.confidence, timingOffsetSeconds:aligned.offset,
-          detectedLanguage:youtube.captionLanguage||youtube.metadata?.language||'', wordTimings:youtube.wordTimings||[],
-          wordTimingSource:youtube.wordTimingSource||'' });
+    sendStatus({ stage:'timing', text:'Precision Sync · calibrating lyrics to this exact recording…' });
+    let youtube = null;
+    if (song?.url && fs.existsSync(YTDLP_PATH)) {
+      youtube = await getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, {
+        signal, browserAuth:readYouTubeAccess(), tempRoot:path.join(cacheDir,'lyrics-captions')
+      });
+      if (signal.aborted || youtube?.cancelled) return { cancelled:true };
+    }
+
+    if (youtube?.syncedLyrics) {
+      if (original.syncedLyrics) {
+        const aligned = alignSyncedLyricsToCaptions(original.syncedLyrics, youtube.syncedLyrics);
+        if (aligned && aligned.matched >= 2 && aligned.confidence >= .38) {
+          const enriched = withScriptVariants({ ...original, syncedLyrics:aligned.syncedLyrics,
+            source:`${original.source} text · ${youtube.source} precision timing`, timingPrecision:'youtube-warped',
+            timingMatchCount:aligned.matched, timingConfidence:aligned.confidence, timingOffsetSeconds:aligned.offset,
+            timingAnchors:aligned.timingAnchors||aligned.matched, timingDriftSeconds:aligned.timingDriftSeconds||0,
+            timingWarp:aligned.timingWarp||'anchor-offset', detectedLanguage:youtube.captionLanguage||youtube.metadata?.language||'',
+            wordTimings:youtube.wordTimings||[], wordTimingSource:youtube.wordTimingSource||'' });
+          persistAutomaticLyricsResult(song, enriched);
+          return enriched;
+        }
+      }
+      if (original.lyrics) {
+        const alignedPlain = alignPlainLyricsToTimedTranscript(original.lyrics, youtube.syncedLyrics);
+        if (alignedPlain && alignedPlain.matched >= 2 && alignedPlain.confidence >= .38) {
+          const enriched = withScriptVariants({ ...original, syncedLyrics:alignedPlain.syncedLyrics,
+            source:`${original.source} text · ${youtube.source} precision timing`, timingPrecision:'youtube-warped',
+            timingMatchCount:alignedPlain.matched, timingConfidence:alignedPlain.confidence, timingOffsetSeconds:0,
+            detectedLanguage:youtube.captionLanguage||youtube.metadata?.language||'', wordTimings:youtube.wordTimings||[],
+            wordTimingSource:youtube.wordTimingSource||'' });
+          persistAutomaticLyricsResult(song, enriched);
+          return enriched;
+        }
+      }
+      // Only use caption text itself when there is no provider text to preserve.
+      if (!hasLyricsText(original)) {
+        const enriched = withScriptVariants({ ...youtube, timingPrecision:'youtube-exact', timingOffsetSeconds:0 });
+        persistAutomaticLyricsResult(song, enriched);
+        return enriched;
       }
     }
-    return withScriptVariants({ ...youtube, timingPrecision:'youtube-exact', timingOffsetSeconds:0 });
-  } catch { return { success:false }; }
+
+    // Strong fallback: if the user has already installed the local lyrics AI model, listen
+    // to the exact stream/file and use its timestamps as timing anchors. Do not auto-download
+    // the large model just for background calibration; first-time setup remains explicit/fallback.
+    const canListen = !!song?.streamUrl || (!!song?.filepath && fs.existsSync(song.filepath)) || (!!song?.url && fs.existsSync(YTDLP_PATH));
+    if (original.syncedLyrics && canListen && localLyricsAiTimingReady()) {
+      sendStatus({ stage:'timing', text:'Precision Sync · matching lyrics to the actual playing audio…' });
+      const timed = await transcribeSong(song, {
+        ytdlpPath:YTDLP_PATH, tempRoot:path.join(cacheDir,'lyrics-ai'), modelDir:path.join(app.getPath('userData'),'models'),
+        onStatus:sendStatus, signal, browserAuth:readYouTubeAccess()
+      });
+      if (signal.aborted || timed?.cancelled) return { cancelled:true };
+      if (timed?.syncedLyrics) {
+        const aligned = alignSyncedLyricsToCaptions(original.syncedLyrics, timed.syncedLyrics);
+        if (aligned && aligned.matched >= 2 && aligned.confidence >= .36) {
+          const enriched = withScriptVariants({ ...original, syncedLyrics:aligned.syncedLyrics,
+            source:`${original.source} text · actual-audio Precision Sync`, timingPrecision:'audio-warped',
+            timingMatchCount:aligned.matched, timingConfidence:aligned.confidence, timingOffsetSeconds:aligned.offset,
+            timingAnchors:aligned.timingAnchors||aligned.matched, timingDriftSeconds:aligned.timingDriftSeconds||0,
+            timingWarp:aligned.timingWarp||'anchor-offset' });
+          persistAutomaticLyricsResult(song, enriched);
+          return enriched;
+        }
+      }
+    }
+    return { success:false };
+  } catch (error) {
+    if (signal.aborted) return { cancelled:true };
+    console.warn('[lyrics precision sync]', String(error?.message||error).replace(/\s+/g,' ').slice(0,240));
+    return { success:false };
+  } finally {
+    if (lyricsUpgradeControllers.get(senderId) === controller) lyricsUpgradeControllers.delete(senderId);
+  }
+});
+
+// User-invoked exact lyrics: find a matching lyric video, prefer its real captions,
+// otherwise read the words from video frames with local Windows OCR, then audio-align
+// that lyric-video timeline to the exact track the user is currently hearing.
+ipcMain.handle('get-exact-lyrics', async (event, song, requestOptions = {}) => {
+  const senderId = event.sender.id;
+  try { exactLyricsControllers.get(senderId)?.abort(); } catch {}
+  const controller = new AbortController();
+  exactLyricsControllers.set(senderId, controller);
+  const signal = controller.signal;
+  const sendStatus = (payload) => {
+    try { event.sender.send('lyrics-status', { songId:song?.id || '', title:song?.title || '', exact:true, ...payload }); } catch {}
+  };
+  try {
+    if (!song || !song.title) return { error:'Play a song first, then use Exact Lyrics.' };
+    if (!fs.existsSync(YTDLP_PATH)) return { error:'Exact Lyrics needs yt-dlp. Run Setup-YtDlp.bat once, then retry.' };
+    const key = exactCacheKey(song);
+    const cache = readJsonCache(exactLyricsCachePath);
+    if (!requestOptions.force && cache[key]) {
+      sendStatus({ stage:'exact-ready', text:'Exact Lyrics loaded from verified local cache.', progress:100 });
+      return { ...cache[key], exactCached:true };
+    }
+    const result = await exactLyricsFromVideo(song, {
+      ytdlpPath:YTDLP_PATH,
+      tempRoot:path.join(cacheDir,'exact-lyrics'),
+      signal,
+      browserAuth:readYouTubeAccess(),
+      execFileAsync,
+      fetchImpl:fetch,
+      modelDir:path.join(app.getPath('userData'),'models'),
+      onStatus:sendStatus
+    });
+    if (signal.aborted || result?.cancelled) return { cancelled:true };
+    if (result?.syncedLyrics || result?.lyrics) {
+      cache[key] = result;
+      // Keep the exact cache deliberately local to this PC/user profile. Normal playback
+      // will prefer it before hitting LRCLIB/captions again.
+      writeJsonCache(exactLyricsCachePath, cache);
+    }
+    return result;
+  } catch (error) {
+    if (signal.aborted) return { cancelled:true };
+    const message = String(error?.message || error).replace(/\s+/g,' ').slice(0,420);
+    console.warn('[exact lyrics]', message);
+    return { error:`Exact Lyrics failed: ${message}` };
+  } finally {
+    if (exactLyricsControllers.get(senderId) === controller) exactLyricsControllers.delete(senderId);
+  }
 });
 
 // Upgrade already-visible plain lyrics to timed lyrics in the background. This is
@@ -1303,7 +1687,7 @@ ipcMain.handle('delete-song', async (_event, id) => {
 });
 
 // DEEP-ECHO 2.0 desktop services. Restricted actions; renderer never supplies file paths.
-const { shell, dialog } = require('electron');
+const { dialog } = require('electron');
 let autoUpdater = null;
 try { ({ autoUpdater } = require('electron-updater')); } catch (error) {
   console.warn('[auto-update] electron-updater unavailable:', String(error?.message || error));
@@ -1367,7 +1751,7 @@ ipcMain.handle('v200-storage',()=>{
  return {downloads:measure(libraryDir),cache:measure(cacheDir),smartCache:measure(smartCacheDir)};
 });
 ipcMain.handle('v200-repair',(_e,kind)=>{
- if(kind==='lyrics'){try{fs.unlinkSync(lyricsCachePath)}catch{};return {success:true,message:'Lyrics disk cache cleared. Retry lyrics.'}};
+ if(kind==='lyrics'){try{fs.unlinkSync(lyricsCachePath)}catch{};try{fs.unlinkSync(exactLyricsCachePath)}catch{};return {success:true,message:'Lyrics and Exact Lyrics caches cleared. Retry lyrics.'}};
  if(kind==='library'){const missing=readLibrary().filter(s=>!s.filepath||!fs.existsSync(s.filepath));return {success:true,message:missing.length?`${missing.length} downloaded files are missing. Re-download those songs.`:'All downloaded files found.',missing:missing.map(s=>s.id)}};
  if(kind==='temp'){let count=0;try{for(const n of fs.readdirSync(cacheDir)){const f=path.join(cacheDir,n),st=fs.lstatSync(f);if(st.isFile()&&Date.now()-st.mtimeMs>86400000){try{fs.unlinkSync(f);count++}catch{}}}}catch{}return {success:true,message:`Removed ${count} temporary files older than 24 hours.`}};
  return {success:false,message:'Unknown repair action'};
