@@ -339,6 +339,16 @@ function normalizeSong(song) {
     ...(song.versionKind ? { versionKind:String(song.versionKind) } : {}),
     ...(song.lyricsReady ? { lyricsReady:true } : {}),
     ...(song.lyricsVerified ? { lyricsVerified:true } : {}),
+    ...(song.isPlaylist ? { isPlaylist:true } : {}),
+    ...(song.playlistId ? { playlistId:String(song.playlistId) } : {}),
+    ...(song.resultType ? { resultType:String(song.resultType) } : {}),
+    ...(Number.isFinite(Number(song.startTime)) ? { startTime:Number(song.startTime) } : {}),
+    ...(Number.isFinite(Number(song.endTime)) ? { endTime:Number(song.endTime) } : {}),
+    ...(song.chapterFallback ? { chapterFallback:true } : {}),
+    ...(song.sourceVideoId ? { sourceVideoId:String(song.sourceVideoId) } : {}),
+    ...(song.skipLyricsVerification ? { skipLyricsVerification:true } : {}),
+    ...(song.playlistTrackSource ? { playlistTrackSource:String(song.playlistTrackSource) } : {}),
+    ...(song.resolvedFromMix ? { resolvedFromMix:true } : {}),
     ...((song.explicitVersion || song.versionKind) ? { explicitVersion:true } : {})
   };
 }
@@ -462,6 +472,117 @@ artistModalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') art
 artistSearchModal.addEventListener('click', (e) => { if (e.target === artistSearchModal) closeArtistSearchModal(); });
 searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch('song'); });
 
+
+function uiDurationSeconds(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 0;
+  const parts = raw.split(':').map(Number);
+  if (parts.some(n => !Number.isFinite(n))) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return Number(parts[0]) || 0;
+}
+
+function searchResultIsPlaylistLike(song) {
+  try {
+    if (window.deepEchoPlaylistDetector?.isPlaylist?.(song)) return true;
+  } catch (_) {}
+  if (!song) return false;
+  if (song.isPlaylist === true || song.playlistId || /playlist/i.test(String(song.resultType || song.type || ''))) return true;
+  const url = String(song.url || '');
+  if (/(?:youtube\.com\/playlist\?|[?&]list=)/i.test(url)) return true;
+  const title = String(song.title || '');
+  const seconds = uiDurationSeconds(song.duration);
+  if (/\b(?:playlist|jukebox|non[ -]?stop|full album|full soundtrack|top (?:hits|songs)|best of|audio jukebox|mega mix|music mix|mixtape|song collection|songs collection|all songs|hits of|compilation)\b/i.test(title)) return true;
+  if (seconds >= 14 * 60 && /(?:\bpov\b|sounds? like|playlist for|for anyone who|for when|mood songs?|\bvibes?\b|love songs?|romantic songs?|sad songs?|chill songs?|party songs?|workout songs?|late[ -]?night)/i.test(title)) return true;
+  return seconds >= 38 * 60 && /\b(?:songs?|music|hits?|vibes?|romantic|love|sad|chill|party|workout|night|bollywood|punjabi|hindi)\b/i.test(title);
+}
+
+function isPlaylistDetailContext(contextSpec) {
+  return !!contextSpec && /(?:playlist|mix)/i.test(String(contextSpec.type || ''));
+}
+
+function searchLyricsEffectiveScore(song, originalIndex = 0) {
+  const base = Number(song?.lyricsSearchScore || 0);
+  let verifiedBoost = song?.lyricsVerified ? 30 : 0;
+  if (searchResultIsPlaylistLike(song)) verifiedBoost = 0;
+  // Original rank remains a tiny tie-breaker only; exact query relevance still comes from main.js.
+  return base + verifiedBoost - Math.max(0, Number(originalIndex || 0)) * .001;
+}
+
+function reorderRenderedSearchByLyricsSupport(results, contextSpec, request) {
+  if (request !== searchRequest || !Array.isArray(results) || !results.length) return;
+  const originalIndex = new Map(results.map((song, index) => [String(song?.id || ''), Number(song?._searchOriginalIndex ?? index)]));
+  const sorted = results.slice().sort((a, b) => {
+    const ai = originalIndex.get(String(a?.id || '')) ?? 0;
+    const bi = originalIndex.get(String(b?.id || '')) ?? 0;
+    return searchLyricsEffectiveScore(b, bi) - searchLyricsEffectiveScore(a, ai) || ai - bi;
+  });
+  const changed = sorted.some((song, index) => song !== results[index]);
+  if (!changed) return;
+  results.splice(0, results.length, ...sorted);
+  if (contextSpec?.items) contextSpec.items = sorted.map(queueSong).filter(Boolean);
+  const rows = new Map(Array.from(resultsList.querySelectorAll('.song-row')).map(row => [String(row.dataset.songId || ''), row]));
+  const fragment = document.createDocumentFragment();
+  sorted.forEach(song => { const row = rows.get(String(song?.id || '')); if (row) fragment.appendChild(row); });
+  resultsList.appendChild(fragment);
+}
+
+function setSearchLyricsBadge(song, state) {
+  const row = Array.from(resultsList.querySelectorAll('.song-row')).find(el => String(el.dataset.songId || '') === String(song?.id || ''));
+  const sub = row?.querySelector('.song-meta .sub'); if (!sub) return;
+  let badge = sub.querySelector('.lyrics-ready-badge');
+  if (searchResultIsPlaylistLike(song)) { badge?.remove(); return; }
+  if (state === 'supported') {
+    if (!badge) { badge = document.createElement('span'); badge.className = 'lyrics-ready-badge'; sub.appendChild(badge); }
+    badge.classList.remove('checking'); badge.classList.add('verified');
+    badge.textContent = '✓ Lyrics Supported';
+    badge.title = 'DeepEcho verified synced lyrics and timing for this exact video';
+    return;
+  }
+  if (state === 'checking') {
+    if (!badge) { badge = document.createElement('span'); badge.className = 'lyrics-ready-badge'; sub.appendChild(badge); }
+    badge.classList.remove('verified'); badge.classList.add('checking');
+    badge.textContent = 'Checking sync…';
+    badge.title = 'DeepEcho is checking exact-video lyric timing';
+    return;
+  }
+  if (badge?.classList.contains('checking')) badge.remove();
+}
+
+async function verifyRenderedSearchLyricsSupport(results, request, contextSpec = null) {
+  if (!window.echoAPI?.verifyLyricsSupport || !Array.isArray(results) || !results.length) return;
+  // Verify a bounded set so Search stays responsive. Every probed row visibly reports
+  // "Checking sync…" until exact-video timing is confirmed or the probe finishes.
+  const queue = results.filter(song => !searchResultIsPlaylistLike(song)).slice()
+    .sort((a,b) => Number(!!b.lyricsReady) - Number(!!a.lyricsReady) || Number(b.lyricsSearchScore||0) - Number(a.lyricsSearchScore||0))
+    .slice(0, 12);
+  queue.forEach(song => { if (!song.lyricsVerified) { song.lyricsChecking = true; setSearchLyricsBadge(song, 'checking'); } });
+  let cursor = 0, reorderTimer = 0;
+  const scheduleReorder = () => {
+    clearTimeout(reorderTimer);
+    reorderTimer = setTimeout(() => reorderRenderedSearchByLyricsSupport(results, contextSpec, request), 160);
+  };
+  const worker = async () => {
+    while (cursor < queue.length) {
+      const song = queue[cursor++];
+      if (song.lyricsVerified) continue;
+      let status = null;
+      try { status = await window.echoAPI.verifyLyricsSupport(song); } catch { status = null; }
+      if (request !== searchRequest) return;
+      song.lyricsChecking = false;
+      if (!status?.verified) { setSearchLyricsBadge(song, 'done'); continue; }
+      song.lyricsVerified = true; song.lyricsReady = true;
+      setSearchLyricsBadge(song, 'supported');
+      scheduleReorder();
+    }
+  };
+  const workerCount = Math.min(5, Math.max(1, queue.length));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  clearTimeout(reorderTimer);
+  reorderRenderedSearchByLyricsSupport(results, contextSpec, request);
+}
+
 async function runSearch(mode = 'song', overrideQuery = '') {
   const request = ++searchRequest;
   const q = (overrideQuery || searchInput.value || '').trim();
@@ -484,9 +605,15 @@ async function runSearch(mode = 'song', overrideQuery = '') {
       return;
     }
     searchHint.textContent = '';
+    results.forEach((song,index) => {
+      song._searchOriginalIndex = index;
+      if (mode === 'song' && !searchResultIsPlaylistLike(song) && !song.lyricsVerified && index < 12) song.lyricsChecking = true;
+      if (searchResultIsPlaylistLike(song)) { song.lyricsChecking = false; song.lyricsReady = false; song.lyricsVerified = false; }
+    });
     registerSongs(results);
     const context = makeContext(results, mode === 'artist' ? 'artist-search' : 'search', mode === 'artist' ? `Artist: ${q}` : 'Search Results', `${mode}:${q}`);
     results.forEach((song) => resultsList.appendChild(buildSongRow(song, false, context)));
+    if(mode==='song') void verifyRenderedSearchLyricsSupport(results,request,context);
   } catch (err) {
     if(request === searchRequest) searchHint.textContent = 'Search failed: ' + err.message;
   }
@@ -830,12 +957,71 @@ function renderPlaylists() {
   });
 }
 
+
+let playlistLyricsCapabilityRequest = 0;
+
+function setPlaylistLyricsCapabilityBadge(song, state) {
+  const row = Array.from(playlistSongs.querySelectorAll('.song-row')).find(el => String(el.dataset.songId || '') === String(song?.id || ''));
+  const sub = row?.querySelector('.song-meta .sub');
+  if (!sub) return;
+  let badge = sub.querySelector('.lyrics-ready-badge');
+  if (!badge) { badge = document.createElement('span'); badge.className = 'lyrics-ready-badge'; sub.appendChild(badge); }
+  badge.classList.remove('checking', 'verified', 'unsupported');
+  if (state === 'supported') {
+    badge.classList.add('verified');
+    badge.textContent = '✓ Lyrics Supported';
+    badge.title = 'DeepEcho verified synced lyrics and timing for this exact video';
+  } else if (state === 'checking') {
+    badge.classList.add('checking');
+    badge.textContent = 'Checking sync…';
+    badge.title = 'DeepEcho is checking exact-video lyric timing';
+  } else {
+    badge.classList.add('unsupported');
+    badge.textContent = 'Lyrics Not Supported';
+    badge.title = 'Synced lyrics were not verified for this exact video';
+  }
+}
+
+async function verifyOpenedPlaylistLyricsSupport(songs, request) {
+  const list = (Array.isArray(songs) ? songs : []).filter(song => !searchResultIsPlaylistLike(song));
+  if (!list.length) return;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < list.length) {
+      const song = list[cursor++];
+      if (request !== playlistLyricsCapabilityRequest) return;
+      if (song.lyricsVerified) { song.lyricsChecking = false; song.lyricsUnsupported = false; setPlaylistLyricsCapabilityBadge(song, 'supported'); continue; }
+      if (song.skipLyricsVerification || !window.echoAPI?.verifyLyricsSupport) {
+        song.lyricsChecking = false; song.lyricsUnsupported = true; setPlaylistLyricsCapabilityBadge(song, 'unsupported'); continue;
+      }
+      let status = null;
+      try { status = await window.echoAPI.verifyLyricsSupport(song); } catch (_) { status = null; }
+      if (request !== playlistLyricsCapabilityRequest) return;
+      song.lyricsChecking = false;
+      song.lyricsVerified = !!status?.verified;
+      song.lyricsUnsupported = !song.lyricsVerified;
+      setPlaylistLyricsCapabilityBadge(song, song.lyricsVerified ? 'supported' : 'unsupported');
+    }
+  };
+  await Promise.all([worker(), worker()]);
+}
+
 function renderPlaylistDetailSongs(songs, context, { localName = null } = {}) {
   playlistSongs.innerHTML = '';
   registerSongs(songs);
+  const capabilityRequest = ++playlistLyricsCapabilityRequest;
+  const showPlaylistLyricsCapability = isPlaylistDetailContext(context);
   if (!songs.length) {
     playlistSongs.innerHTML = '<p class="playlist-detail-empty">No songs in this playlist yet.</p>';
     return;
+  }
+  if (showPlaylistLyricsCapability) {
+    songs.forEach(song => {
+      if (searchResultIsPlaylistLike(song)) return;
+      if (song.lyricsVerified) { song.lyricsChecking = false; song.lyricsUnsupported = false; }
+      else if (song.skipLyricsVerification) { song.lyricsChecking = false; song.lyricsUnsupported = true; }
+      else { song.lyricsChecking = true; song.lyricsUnsupported = false; }
+    });
   }
   songs.forEach((song) => {
     const row = buildSongRow(song, false, context);
@@ -854,6 +1040,7 @@ function renderPlaylistDetailSongs(songs, context, { localName = null } = {}) {
     }
     playlistSongs.appendChild(row);
   });
+  if (showPlaylistLyricsCapability) void verifyOpenedPlaylistLyricsSupport(songs, capabilityRequest);
 }
 
 function showPlaylist(name) {
@@ -1067,6 +1254,7 @@ function buildSongRow(song, isLibrary, contextSpec = null) {
   registerSongs([song]);
   const row = document.createElement('div');
   row.className = 'song-row';
+  row.dataset.songId = String(song?.id || '');
 
   const img = document.createElement('img');
   img.src = song.thumbnail || '';
@@ -1075,7 +1263,10 @@ function buildSongRow(song, isLibrary, contextSpec = null) {
 
   const meta = document.createElement('div');
   meta.className = 'song-meta';
-  const searchBadge = song?.lyricsVerified ? '<span class="lyrics-ready-badge" title="DeepEcho verified synced lyrics for this exact video">✓ Lyrics verified</span>' : (song?.lyricsReady ? '<span class="lyrics-ready-badge" title="Lyrics/lyrical video candidate · sync is verified after playback">Lyrics video</span>' : '');
+  const playlistLikeRow = searchResultIsPlaylistLike(song);
+  const playlistDetailRow = isPlaylistDetailContext(contextSpec) && !playlistLikeRow;
+  const singleLyricsBadge = song?.lyricsVerified ? '<span class="lyrics-ready-badge" title="DeepEcho verified synced lyrics and timing for this exact video">✓ Lyrics Supported</span>' : (song?.lyricsChecking ? '<span class="lyrics-ready-badge checking" title="DeepEcho is checking exact-video lyric timing">Checking sync…</span>' : (playlistDetailRow && song?.lyricsUnsupported ? '<span class="lyrics-ready-badge unsupported" title="Synced lyrics were not verified for this exact video">Lyrics Not Supported</span>' : (!playlistDetailRow && song?.lyricsReady ? '<span class="lyrics-ready-badge" title="Lyrics/lyrical video candidate · sync is verified after playback">Lyrics video</span>' : '')));
+  const searchBadge = playlistLikeRow ? '' : singleLyricsBadge;
   meta.innerHTML = `<div class="title">${escapeHtml(song.title)}</div><div class="sub">${escapeHtml(song.channel || '')}${searchBadge}</div>`;
   row.appendChild(meta);
 
@@ -1217,7 +1408,7 @@ function smartScheduleSecondaryPlayback(song, requestId, delay = 420) {
       if (requestId !== playRequest || currentSong?.id !== song.id) return;
       startLyricsVisualizer();
       syncFluidFxState();
-      Promise.resolve(loadLyricsFor(currentSong)).catch(()=>{});
+      if (!currentSong?.skipLyricsVerification) Promise.resolve(loadLyricsFor(currentSong)).catch(()=>{});
     });
   }, delay);
 }
@@ -1716,10 +1907,13 @@ async function playLocal(song, requestId) {
   try {
     await audioPlayer.play();
     if (requestId !== playRequest) return;
+    smartScheduleSecondaryPlayback(currentSong, requestId, 420);
+    if (song.chapterFallback && Number(song.startTime) > 0 && Number.isFinite(audioPlayer.duration)) {
+      try { audioPlayer.currentTime = Math.min(Math.max(0, Number(song.startTime)), Math.max(0, audioPlayer.duration - .05)); } catch (_) {}
+    }
     await resumeAudioAnalyser(true);
     startLyricsVisualizer();
     startAudioEnergyTicker();
-    smartScheduleSecondaryPlayback(currentSong, requestId, 420);
     addRecentlyPlayed(song);
     showPlayLoading(100, 'Playing', song.title);
     loadingTimer = setTimeout(hidePlayLoading, 1200);
@@ -1736,6 +1930,9 @@ async function playLocal(song, requestId) {
           audioAnalyserMediaKey = ''; resetVisualizerSignalState();
           currentSong = { ...currentSong, filepath: fallback.filepath || '', fileUrl: fallback.fileUrl, streamUrl: '' };
           await audioPlayer.play();
+          if (song.chapterFallback && Number(song.startTime) > 0 && Number.isFinite(audioPlayer.duration)) {
+            try { audioPlayer.currentTime = Math.min(Math.max(0, Number(song.startTime)), Math.max(0, audioPlayer.duration - .05)); } catch (_) {}
+          }
           // Restart secondary work from the known-good local compatibility source,
           // but keep it off the audio-start critical path.
           smartScheduleSecondaryPlayback(currentSong, requestId, 250);
@@ -1760,6 +1957,18 @@ playPauseBtn.addEventListener('click', async () => {
 });
 ['play', 'pause', 'ended'].forEach(event => audioPlayer.addEventListener(event, updatePlayIcon));
 audioPlayer.addEventListener('ended', () => { if (window.deepEchoStopAtEnd) { window.deepEchoStopAtEnd = false; audioPlayer.pause(); window.dispatchEvent(new Event('deep-echo-sleep-finished')); return; } if (typeof smartRecordCompletionSignal === 'function') smartRecordCompletionSignal(currentSong); if (typeof onSmartPlaybackEnded === 'function') onSmartPlaybackEnded(); playNext({ auto: true }); });
+let chapterBoundaryAdvanceId = '';
+audioPlayer.addEventListener('timeupdate', () => {
+  if (!currentSong?.chapterFallback) { chapterBoundaryAdvanceId = ''; return; }
+  const end = Number(currentSong.endTime || 0);
+  if (!(end > Number(currentSong.startTime || 0)) || audioPlayer.currentTime < end - .12) return;
+  if (chapterBoundaryAdvanceId === currentSong.id) return;
+  chapterBoundaryAdvanceId = currentSong.id;
+  audioPlayer.pause();
+  if (typeof smartRecordCompletionSignal === 'function') smartRecordCompletionSignal(currentSong);
+  if (typeof onSmartPlaybackEnded === 'function') onSmartPlaybackEnded();
+  void playNext({ auto:true });
+});
 audioPlayer.addEventListener('error', () => { hidePlayLoading(); updatePlayIcon(); showToast('Audio file load nahi hui. Song dobara play karo.'); });
 audioPlayer.addEventListener('waiting', () => { if (!loadingRequest) showPlayLoading(null, 'Buffering', currentSong?.title); });
 audioPlayer.addEventListener('playing', () => { if (!loadingRequest) hidePlayLoading(); });
@@ -1806,6 +2015,16 @@ function syncPlayerDownloadState() {
 
 audioPlayer.addEventListener('timeupdate', () => {
   if (!audioPlayer.duration) return;
+  if (currentSong?.chapterFallback && Number(currentSong.endTime) > Number(currentSong.startTime)) {
+    const start = Math.max(0, Number(currentSong.startTime) || 0);
+    const end = Math.min(Number(audioPlayer.duration) || Number(currentSong.endTime), Number(currentSong.endTime));
+    const span = Math.max(.1, end - start);
+    const relative = Math.max(0, Math.min(span, Number(audioPlayer.currentTime || 0) - start));
+    seekBar.value = (relative / span) * 100;
+    curTime.textContent = formatTime(relative);
+    durTime.textContent = formatTime(span);
+    return;
+  }
   seekBar.value = (audioPlayer.currentTime / audioPlayer.duration) * 100;
   curTime.textContent = formatTime(audioPlayer.currentTime);
   durTime.textContent = formatTime(audioPlayer.duration);
@@ -1813,6 +2032,12 @@ audioPlayer.addEventListener('timeupdate', () => {
 
 seekBar.addEventListener('input', () => {
   if (!audioPlayer.duration) return;
+  if (currentSong?.chapterFallback && Number(currentSong.endTime) > Number(currentSong.startTime)) {
+    const start = Math.max(0, Number(currentSong.startTime) || 0);
+    const end = Math.min(Number(audioPlayer.duration) || Number(currentSong.endTime), Number(currentSong.endTime));
+    audioPlayer.currentTime = start + (Math.max(0, Math.min(100, Number(seekBar.value) || 0)) / 100) * Math.max(.1, end - start);
+    return;
+  }
   audioPlayer.currentTime = (seekBar.value / 100) * audioPlayer.duration;
 });
 
@@ -3670,11 +3895,36 @@ function smartRecommendationSeeds(limit=4){
 }
 function smartRecommendationSeed(){ return smartRecommendationSeeds(1)[0]||queueSong(getStored(STORAGE.recent, [])[0])||queueSong(getLikedSongs()[0]); }
 function smartRecommendationCache(){ return getStored(STORAGE.recommendations,{profileKey:'',updatedAt:0,seeds:[],songs:[],bySeed:[]}); }
-function smartTextTokens(value){return new Set(String(value||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(x=>x.length>2));}
+function smartTextTokens(value){return new Set(String(value||'').toLowerCase().replace(/[^a-z0-9\u0900-\u097f\u0a00-\u0a7f\s]/g,' ').split(/\s+/).filter(x=>x.length>2));}
+const SMART_DISCOVERY_MOODS=[
+  ['romantic',/\b(love|lover|romantic|ishq|pyaar|pyar|mohabbat|dil|heart|jaan|sanam|sajna)\b/i],
+  ['sad',/\b(sad|broken|alone|dard|judai|tanha|hurt|bewafa|yaad|miss)\b/i],
+  ['chill',/\b(chill|lofi|lo-fi|acoustic|soft|calm|unplugged|ambient|dream)\b/i],
+  ['energy',/\b(dance|party|edm|rock|bass|club|phonk|anthem|workout)\b/i],
+  ['hiphop',/\b(rap|hip hop|hip-hop|trap|drill|freestyle|cypher)\b/i],
+  ['soul',/\b(rnb|r&b|soul|jazz|groove|funk|smooth)\b/i]
+];
+function smartMoodSet(song){const text=`${song?.title||''} ${song?.channel||''}`;return new Set(SMART_DISCOVERY_MOODS.filter(([,re])=>re.test(text)).map(([name])=>name));}
+function smartMoodAffinity(song,seeds){const own=smartMoodSet(song);if(!own.size)return 0;let best=0;for(const seed of seeds||[]){const other=smartMoodSet(seed);if(!other.size)continue;let common=0;for(const mood of own)if(other.has(mood))common++;best=Math.max(best,common/Math.max(1,Math.min(own.size,other.size)));}return best;}
+function smartRecommendationCandidatePenalty(song){
+  const title=String(song?.title||'').toLowerCase(); let penalty=0;
+  if(/\b(slowed|reverb|sped up|nightcore|8d|karaoke|instrumental|cover|mashup)\b/.test(title))penalty+=4.2;
+  if(/\b(jukebox|playlist|nonstop|non stop|full album|top songs)\b/.test(title))penalty+=7;
+  const sig=smartPreferenceSignals()?.[song?.id]||{};
+  penalty+=Math.max(0,Number(sig.skips||0)-Number(sig.completes||0)-Number(sig.likes||0)) * 1.7;
+  return penalty;
+}
 function smartSimilarityScore(song,seeds){
   const title=smartTextTokens(song.title), channel=String(song.channel||'').toLowerCase(); let score=0;
-  seeds.forEach((seed,idx)=>{const weight=Math.max(.6,1.4-idx*.22);if(channel&&seed.channel&&channel.includes(String(seed.channel).toLowerCase().slice(0,18)))score+=2.2*weight;const seedTokens=smartTextTokens(seed.title);for(const t of seedTokens)if(title.has(t))score+=.28*weight;});
-  return score;
+  seeds.forEach((seed,idx)=>{const weight=Math.max(.6,1.4-idx*.22);const seedChannel=String(seed.channel||'').toLowerCase();if(channel&&seedChannel&&channel===seedChannel)score+=2.5*weight;else if(channel&&seedChannel&&channel.includes(seedChannel.slice(0,18)))score+=1.35*weight;const seedTokens=smartTextTokens(seed.title);for(const t of seedTokens)if(title.has(t))score+=.28*weight;});
+  score+=smartMoodAffinity(song,seeds)*3.2;
+  if(song?.lyricsVerified)score+=.35;
+  return score-smartRecommendationCandidatePenalty(song);
+}
+function smartDiverseRecommendationList(items,limit=12){
+  const out=[],artists=new Map(),seenFamilies=new Set();
+  for(const raw of items||[]){const song=queueSong(raw);if(!song?.id)continue;const artist=String(song.channel||'').toLowerCase().replace(/\b(official|topic|vevo|music)\b/g,' ').replace(/\s+/g,' ').trim();const family=[...smartTextTokens(song.title)].filter(t=>!['official','video','audio','lyrics','lyric','song'].includes(t)).slice(0,8).join(' ');if(family&&seenFamilies.has(family))continue;const used=artists.get(artist)||0;if(artist&&((out.length<6&&used>=1)||used>=2))continue;if(family)seenFamilies.add(family);if(artist)artists.set(artist,used+1);out.push(song);if(out.length>=limit)break;}
+  return out;
 }
 async function smartRefreshRecommendations(force=false){
   const seeds=smartRecommendationSeeds(4); if(!seeds.length||smartRecommendationBusy){renderSmartHomeRecommendations();return;}
@@ -3687,7 +3937,7 @@ async function smartRefreshRecommendations(force=false){
     const settled=await Promise.allSettled(queries.slice(0,5).map(x=>window.echoAPI.search(x.q)));
     const scored=new Map(), bySeed=new Map();
     settled.forEach((result,qIndex)=>{if(result.status!=='fulfilled'||!Array.isArray(result.value))return;const meta=queries[qIndex];const seedList=bySeed.get(meta.seed.id)||[];result.value.slice(0,22).forEach((raw,pos)=>{const song=queueSong(raw);if(!song?.id||seeds.some(s=>s.id===song.id))return;seedList.push(song);const current=scored.get(song.id)||{song,score:0};current.score+=(24-pos)*.12+(5-qIndex)*.32+smartSimilarityScore(song,seeds);scored.set(song.id,current);});bySeed.set(meta.seed.id,smartUniqueSongs(seedList).slice(0,18));});
-    const songs=[...scored.values()].sort((a,b)=>b.score-a.score).map(x=>x.song).slice(0,36);
+    const songs=smartDiverseRecommendationList([...scored.values()].sort((a,b)=>b.score-a.score).map(x=>x.song),36);
     const payload={profileKey,updatedAt:Date.now(),seeds:seeds.map(normalizeSong),songs,bySeed:seeds.map(s=>({seed:normalizeSong(s),songs:bySeed.get(s.id)||[]}))};
     setStored(STORAGE.recommendations,payload);registerSongs(songs);
   }catch(_){}finally{smartRecommendationBusy=false;renderSmartHomeRecommendations();}
@@ -3696,10 +3946,10 @@ function renderSmartHomeRecommendations(){
   if(!madeForYouGrid||!becauseGrid)return;
   const cached=smartRecommendationCache(), profile=smartRecommendationProfile();
   const familiar=smartUniqueSongs([...getLikedSongs(),...profile.map(x=>x.song),...getStored(STORAGE.recent,[])]), familiarIds=new Set(familiar.map(s=>s.id));
-  const discovery=smartUniqueSongs(cached.songs||[]).filter(s=>!familiarIds.has(s.id));
-  const made=smartUniqueSongs([...discovery,...familiar]).slice(0,6);
+  const discovery=smartDiverseRecommendationList(smartUniqueSongs(cached.songs||[]).filter(s=>!familiarIds.has(s.id)),12);
+  const made=smartDiverseRecommendationList([discovery[0],familiar[0],discovery[1],discovery[2],familiar[1],discovery[3],...discovery.slice(4),...familiar.slice(2)].filter(Boolean),6);
   const lead=cached.bySeed?.find(x=>x?.songs?.length)||null;
-  const because=smartUniqueSongs(lead?.songs||cached.songs||[]).filter(s=>s.id!==lead?.seed?.id).slice(0,6);
+  const because=smartDiverseRecommendationList(smartUniqueSongs(lead?.songs||cached.songs||[]).filter(s=>s.id!==lead?.seed?.id),6);
   madeForYouGrid.innerHTML='';becauseGrid.innerHTML='';
   madeForYouHint.style.display=made.length?'none':'block';becauseHint.style.display=because.length?'none':'block';
   const madeCtx=makeContext(made,'made-for-you','Made For You','made-for-you');made.forEach(song=>madeForYouGrid.appendChild(buildSongCard(song,madeCtx)));
@@ -4205,43 +4455,70 @@ function smartWireQuickEq(range,label,bandIndex){range?.addEventListener('input'
 smartWireQuickEq(bassQuickRange,bassQuickValue,0);smartWireQuickEq(midQuickRange,midQuickValue,2);smartWireQuickEq(trebleQuickRange,trebleQuickValue,4);
 
 const SMART_THEME_SUGGESTIONS = {
-  golden:{name:'Golden Particle',keywords:['golden','classic','old','retro','ghazal','sufi','acoustic','folk','vintage']},
-  purple:{name:'Purple Lighting',keywords:['sad','alone','lonely','memory','memories','slow','reverb','dream','heartbreak','melancholy']},
-  toxic:{name:'Green Toxic',keywords:['rap','hip hop','hip-hop','drill','trap','freestyle','bass','hard','street']},
-  blood:{name:'Red Blood',keywords:['metal','rage','angry','war','fight','blood','dark','rock','aggressive']},
-  silver:{name:'Silver Particles',keywords:['piano','classical','instrumental','ambient','calm','peace','soft','sleep','lofi','lo-fi']},
-  transparent:{name:'Transparent Glass',keywords:['minimal','clean','study','focus','chill','background']},
-  fluids:{name:'Fluids',keywords:['r&b','rnb','soul','groove','smooth','jazz','funk']},
-  rgb:{name:'RGB',keywords:['edm','dance','party','remix','dj','club','electro','phonk','festival']},
-  love:{name:'Love RGB',keywords:['love','romance','romantic','heart','pyaar','pyar','ishq','mohabbat','crush','lover']},
-  space:{name:'Vibrant Space',keywords:['space','star','stars','moon','night','sky','cosmic','galaxy','universe','dreamy']},
-  dark:{name:'Dark',keywords:['dark','deep','midnight','shadow','grunge']},
-  light:{name:'Light',keywords:['happy','sun','morning','bright','summer','feel good','feel-good']}
+  golden:{name:'Golden Particle',keywords:['golden','classic','old','retro','ghazal','sufi','acoustic','folk','vintage','unplugged']},
+  purple:{name:'Purple Lighting',keywords:['sad','alone','lonely','memory','memories','slow','reverb','dream','heartbreak','melancholy','yaad','dard']},
+  toxic:{name:'Green Toxic',keywords:['rap','hip hop','hip-hop','drill','trap','freestyle','bass','hard','street','cypher']},
+  blood:{name:'Red Blood',keywords:['metal','rage','angry','war','fight','blood','dark','rock','aggressive','grunge']},
+  silver:{name:'Silver Particles',keywords:['piano','classical','instrumental','ambient','calm','peace','soft','sleep','lofi','lo-fi','orchestral']},
+  transparent:{name:'Transparent Glass',keywords:['minimal','clean','study','focus','chill','background','work']},
+  fluids:{name:'Fluids',keywords:['r&b','rnb','soul','groove','smooth','jazz','funk','neo soul']},
+  rgb:{name:'RGB',keywords:['edm','dance','party','remix','dj','club','electro','phonk','festival','workout']},
+  love:{name:'Love RGB',keywords:['love','romance','romantic','heart','pyaar','pyar','ishq','mohabbat','crush','lover','sanam','sajna']},
+  space:{name:'Vibrant Space',keywords:['space','star','stars','moon','night','sky','cosmic','galaxy','universe','dreamy','midnight']},
+  dark:{name:'Dark',keywords:['dark','deep','midnight','shadow','grunge','moody']},
+  light:{name:'Light',keywords:['happy','sun','morning','bright','summer','feel good','feel-good','smile','joy']}
 };
+const SMART_THEME_LEARNING_KEY='deepeccho-theme-learning-v1';
 let smartCurrentThemeSuggestion=null, smartThemeSuggestionLastAt=0;
+function smartThemeLearning(){return getStored(SMART_THEME_LEARNING_KEY,{counts:{},bySong:{}});}
+function smartRememberThemeChoice(song,theme){
+  if(!song?.id||!theme)return;
+  const learned=smartThemeLearning();learned.counts=learned.counts||{};learned.bySong=learned.bySong||{};
+  learned.counts[theme]=Math.min(60,Number(learned.counts[theme]||0)+1);learned.bySong[song.id]={theme,at:Date.now()};
+  const entries=Object.entries(learned.bySong).sort((a,b)=>Number(b[1]?.at||0)-Number(a[1]?.at||0)).slice(0,180);learned.bySong=Object.fromEntries(entries);
+  setStored(SMART_THEME_LEARNING_KEY,learned);
+}
+function smartThemePreferenceBoost(theme){
+  const learned=smartThemeLearning(),counts=learned.counts||{},total=Object.values(counts).reduce((a,b)=>a+Number(b||0),0);
+  if(!total)return 0;return Math.min(.55,(Number(counts[theme]||0)/total)*1.2);
+}
 function smartThemeSuggestionForSong(song, audio=window.__dinechoAudioEnergy) {
   if(!song?.id)return null;
+  const learned=smartThemeLearning();const remembered=learned.bySong?.[song.id]?.theme;
+  if(remembered&&SMART_THEME_SUGGESTIONS[remembered])return {theme:remembered,name:SMART_THEME_SUGGESTIONS[remembered].name,score:99,remembered:true};
   const text=`${song.title||''} ${song.channel||''}`.toLowerCase();
-  const scores={golden:.8,purple:.45,toxic:.35,blood:.18,silver:.42,transparent:.22,fluids:.28,rgb:.30,love:.38,space:.44,dark:.16,light:.18};
-  for(const [theme,meta] of Object.entries(SMART_THEME_SUGGESTIONS)) for(const kw of meta.keywords) if(text.includes(kw)) scores[theme]+=2.8;
-  // Deterministic tiny tie-breaker keeps different neutral tracks from always receiving the same suggestion.
-  let hash=0;for(const ch of text)hash=((hash*31)+ch.charCodeAt(0))>>>0;const neutral=['golden','purple','silver','fluids','space','transparent'];scores[neutral[hash%neutral.length]]+=.34;
-  if(audio?.hasSignal){
-    const energy=Number(audio.energy||0),bass=Number(audio.bass||0),treble=Number(audio.treble||0),vocal=Number(audio.vocal||0),aggr=Number(audio.aggression||0),mid=Number(audio.mid||0),high=Number(audio.highMid||0);
-    scores.rgb+=energy*2.3+treble*1.25+aggr*1.15;
-    scores.toxic+=bass*2.25+aggr*1.5;
-    scores.blood+=aggr*2.0+bass*.8;
-    scores.purple+=vocal*1.5+(1-energy)*.72;
-    scores.love+=vocal*1.15+mid*.7;
-    scores.fluids+=mid*1.25+vocal*.72;
-    scores.space+=treble*1.15+high*.95+energy*.5;
-    scores.silver+=(1-energy)*1.25+(1-aggr)*.35;
-    scores.transparent+=(1-energy)*.65;
-    scores.golden+=vocal*.55+(1-aggr)*.42;
+  const scores={golden:.72,purple:.34,toxic:.22,blood:.10,silver:.34,transparent:.18,fluids:.24,rgb:.24,love:.28,space:.34,dark:.12,light:.14};
+  for(const [theme,meta] of Object.entries(SMART_THEME_SUGGESTIONS)){
+    for(const kw of meta.keywords)if(text.includes(kw))scores[theme]+=2.65;
+    scores[theme]+=smartThemePreferenceBoost(theme);
   }
-  const [theme,score]=Object.entries(scores).sort((a,b)=>b[1]-a[1])[0];
-  return {theme,name:SMART_THEME_SUGGESTIONS[theme]?.name||theme,score};
+  // Cross-signal mood rules are stronger than a single generic keyword.
+  if(/\b(love|lover|romantic|ishq|pyaar|pyar|mohabbat|dil|heart|sanam|sajna)\b/.test(text)){scores.love+=2.2;scores.golden+=.55;scores.purple+=.3;}
+  if(/\b(sad|dard|judai|tanha|broken|alone|yaad|miss|heartbreak)\b/.test(text)){scores.purple+=2.35;scores.dark+=.65;scores.silver+=.35;}
+  if(/\b(rap|trap|drill|hip hop|hip-hop|freestyle|cypher)\b/.test(text)){scores.toxic+=2.4;scores.rgb+=.55;scores.dark+=.35;}
+  if(/\b(edm|dance|party|club|phonk|festival|workout)\b/.test(text)){scores.rgb+=2.55;scores.toxic+=.45;}
+  if(/\b(acoustic|unplugged|ghazal|sufi|folk|retro|classic)\b/.test(text)){scores.golden+=2.25;scores.silver+=.45;}
+  if(/\b(ambient|piano|classical|instrumental|calm|sleep|lofi|lo-fi)\b/.test(text)){scores.silver+=2.35;scores.transparent+=.65;scores.space+=.4;}
+  if(/\b(night|moon|sky|dream|dreamy|cosmic|space|galaxy)\b/.test(text)){scores.space+=2.15;scores.purple+=.45;}
+  if(audio?.hasSignal){
+    const energy=Math.max(0,Math.min(1,Number(audio.energy||0))),bass=Math.max(0,Math.min(1,Number(audio.bass||0))),treble=Math.max(0,Math.min(1,Number(audio.treble||0))),vocal=Math.max(0,Math.min(1,Number(audio.vocal||0))),aggr=Math.max(0,Math.min(1,Number(audio.aggression||0))),mid=Math.max(0,Math.min(1,Number(audio.mid||0))),high=Math.max(0,Math.min(1,Number(audio.highMid||0)));
+    scores.rgb+=energy*2.45+treble*1.15+aggr*.9;
+    scores.toxic+=bass*2.35+aggr*1.45;
+    scores.blood+=aggr*2.35+bass*.65;
+    scores.purple+=vocal*1.25+(1-energy)*.9;
+    scores.love+=vocal*1.35+mid*.82+(1-aggr)*.2;
+    scores.fluids+=mid*1.35+vocal*.85+(1-aggr)*.25;
+    scores.space+=treble*1.2+high*1.0+energy*.45;
+    scores.silver+=(1-energy)*1.55+(1-aggr)*.48;
+    scores.transparent+=(1-energy)*.82+(1-bass)*.18;
+    scores.golden+=vocal*.68+(1-aggr)*.52+mid*.25;
+    scores.light+=energy*.7+(1-aggr)*.2;
+  }
+  const ranked=Object.entries(scores).sort((a,b)=>b[1]-a[1]);
+  const [theme,score]=ranked[0], margin=score-Number(ranked[1]?.[1]||0);
+  return {theme,name:SMART_THEME_SUGGESTIONS[theme]?.name||theme,score,confidence:Math.max(0,Math.min(1,margin/2.2))};
 }
+
 function smartUpdateThemeSuggestion(force=false){
   if(!themeSuggestionBtn)return;
   if(!currentSong){themeSuggestionBtn.classList.add('hidden');smartCurrentThemeSuggestion=null;return;}
@@ -4254,7 +4531,7 @@ function smartUpdateThemeSuggestion(force=false){
   themeSuggestionBtn.textContent=matched?`✓ ${suggestion.name} fits this track`:`✨ Try ${suggestion.name}`;
   themeSuggestionBtn.title=matched?`${suggestion.name} is DEEP-ECHO's smart match for this song`:`Smart theme suggestion · click to switch to ${suggestion.name}`;
 }
-themeSuggestionBtn?.addEventListener('click',()=>{if(!smartCurrentThemeSuggestion)return;applyTheme(smartCurrentThemeSuggestion.theme);smartUpdateThemeSuggestion(true);showToast(`${smartCurrentThemeSuggestion.name} theme applied`);});
+themeSuggestionBtn?.addEventListener('click',()=>{if(!smartCurrentThemeSuggestion)return;smartRememberThemeChoice(currentSong,smartCurrentThemeSuggestion.theme);applyTheme(smartCurrentThemeSuggestion.theme);smartUpdateThemeSuggestion(true);showToast(`${smartCurrentThemeSuggestion.name} theme applied · DeepEcho learned this match`);});
 audioPlayer.addEventListener('timeupdate',()=>smartUpdateThemeSuggestion(false));
 
 function smartUpdateNowPlaying() {
@@ -4367,6 +4644,7 @@ const wordByWordToggle = document.getElementById('wordByWordToggle');
 const wordByWordState = document.getElementById('wordByWordState');
 const WORD_BY_WORD_KEY = 'deepeccho-word-by-word-v222';
 let smartWordByWordEnabled = localStorage.getItem(WORD_BY_WORD_KEY) !== 'false';
+let smartWordByWordTimer = 0;
 let smartLastLyricsPayload = null;
 let smartShowingOriginalLyrics = true;
 
@@ -4452,21 +4730,31 @@ function smartExactWordTimings(){
 function smartEstimatedLineWordTimes(index,words){
   const start=Number(lyricLines[index]?.time)||0;
   const next=Number(lyricLines[index+1]?.time);
-  const natural=Math.max(1.6,Math.min(8.5,words.length*.46));
-  const rawEnd=Number.isFinite(next)&&next>start+.35?next:start+natural;
-  const end=Math.min(rawEnd,start+Math.max(2.2,natural*1.28));
-  const usable=Math.max(.5,end-start);
-  const weights=words.map(word=>Math.max(1,smartWordKey(word.textContent).length*.72));
+  // V26: estimated Word-by-Word timing uses a stable visual cadence instead of stretching
+  // every word across the entire gap to the next lyric line. Long pauses used to make words
+  // crawl, while short lines could suddenly race. Exact provider/caption word timings are
+  // never changed; this applies only to the line-timing fallback.
+  const targetPerWord=.38;
+  const desired=Math.max(.9,Math.min(6.2,words.length*targetPerWord));
+  const available=Number.isFinite(next)&&next>start+.28?Math.max(.44,next-start-.06):desired;
+  const usable=Math.max(.44,Math.min(available,desired));
+  // Keep word-length influence small so long words do not linger dramatically longer than
+  // short words. Punctuation still gets a tiny natural hold without visible speed swings.
+  const weights=words.map(word=>{
+    const len=Math.max(1,smartWordKey(word.textContent).length);
+    return Math.max(.88,Math.min(1.16,.94+Math.min(10,len)*.022));
+  });
   const total=Math.max(1,weights.reduce((a,b)=>a+b,0));
   let acc=0;
   return words.map((word,wi)=>{
     const at=start+usable*(acc/total); acc+=weights[wi];
     const to=start+usable*(acc/total);
-    return {text:word.textContent||'',key:smartWordKey(word.textContent),time:at,end:Math.max(at+.08,to),estimated:true};
+    return {text:word.textContent||'',key:smartWordKey(word.textContent),time:at,end:Math.max(at+.10,to),estimated:true};
   });
 }
 function smartAssignWordTimes(line,index,words,exact){
   if(!words.length)return 'line';
+  delete line.dataset.wordPaintState;
   words.forEach(word=>{delete word.dataset.wordTime;delete word.dataset.wordEnd;delete word.dataset.wordExact;delete word.dataset.wordEstimated;delete word.dataset.wordInterpolated;});
   const start=Number(lyricLines[index]?.time)||0; const next=Number(lyricLines[index+1]?.time); const end=Number.isFinite(next)&&next>start?next:start+Math.max(2.2,Math.min(7.5,words.length*.52));
   const candidates=exact.filter(item=>item.time>=Math.max(0,start-.7)&&item.time<=end+.75); let cursor=0,matched=0;
@@ -4495,6 +4783,7 @@ function smartRestoreLineOnlyLyrics(root = lyricsBody){
       line.textContent=text;
     }
     delete line.dataset.wordTiming;
+    delete line.dataset.wordPaintState;
   });
 }
 function smartSetWordByWord(enabled,{announce=false}={}){
@@ -4516,9 +4805,45 @@ function smartPrepareKaraokeWords(){
   const exact=smartExactWordTimings();lyricsBody?.querySelectorAll('.lyric-line[data-line]').forEach((line,index)=>{if(!line.querySelector('.karaoke-word')){const text=line.textContent||'';line.textContent='';const parts=text.split(/(\s+)/);parts.forEach(part=>{if(/^\s+$/.test(part)){line.appendChild(document.createTextNode(part));return;}const span=document.createElement('span');span.className='karaoke-word';span.textContent=part;line.appendChild(span);});}smartAssignWordTimes(line,index,[...line.querySelectorAll('.karaoke-word')],exact);});smartRefreshWordByWordControl();smartUpdateKaraoke();
 }
 function smartPaintWordState(root,t){
-  root?.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{const words=[...line.querySelectorAll('.karaoke-word')];if(!words.length)return;words.forEach(word=>word.classList.remove('lit','word-current'));if(!smartWordByWordEnabled||!['exact','estimated'].includes(line.dataset.wordTiming))return;let current=-1;words.forEach((word,idx)=>{const at=Number(word.dataset.wordTime);if(Number.isFinite(at)&&t>=at){word.classList.add('lit');current=idx;}});if(i===activeLyric&&current>=0&&current<words.length)words[current].classList.add('word-current');if(i<activeLyric)words.forEach(word=>{if(word.dataset.wordTime)word.classList.add('lit');});});
+  root?.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{
+    const words=[...line.querySelectorAll('.karaoke-word')]; if(!words.length)return;
+    if(!smartWordByWordEnabled||!['exact','estimated'].includes(line.dataset.wordTiming)){
+      if(line.dataset.wordPaintState!=='off'){words.forEach(word=>word.classList.remove('lit','word-current'));line.dataset.wordPaintState='off';}
+      return;
+    }
+    // Past/future lines only change when the active line changes. The old implementation
+    // removed and re-added classes on every word every ~80ms, which could visibly stutter on
+    // long lyrics. Only the current line now receives per-tick work.
+    if(i<activeLyric){
+      if(line.dataset.wordPaintState!=='past'){words.forEach(word=>{word.classList.toggle('lit',!!word.dataset.wordTime);word.classList.remove('word-current');});line.dataset.wordPaintState='past';}
+      return;
+    }
+    if(i>activeLyric){
+      if(line.dataset.wordPaintState!=='future'){words.forEach(word=>word.classList.remove('lit','word-current'));line.dataset.wordPaintState='future';}
+      return;
+    }
+    line.dataset.wordPaintState='current';
+    let current=-1;
+    words.forEach((word,idx)=>{
+      const at=Number(word.dataset.wordTime); const end=Number(word.dataset.wordEnd);
+      const lit=Number.isFinite(at)&&t>=at; word.classList.toggle('lit',lit);
+      const nextAt=idx+1<words.length?Number(words[idx+1].dataset.wordTime):NaN;
+      const effectiveEnd=Number.isFinite(end)&&end>at?end:(Number.isFinite(nextAt)&&nextAt>at?nextAt:at+.42);
+      if(lit&&t<effectiveEnd+.035)current=idx;
+      word.classList.remove('word-current');
+    });
+    if(current>=0&&current<words.length)words[current].classList.add('word-current');
+  });
 }
 function smartUpdateKaraoke(){if(!lyricLines.length)return;const t=lyricsPlaybackClock();smartPaintWordState(lyricsBody,t);if(typeof smartUpdateImmersiveKaraoke==='function')smartUpdateImmersiveKaraoke();}
+function smartStartWordByWordTicker(){
+  if(smartWordByWordTimer)return;
+  // Word paint gets its own light 25fps clock. The accepted 80ms line-sync ticker remains
+  // untouched, while current-word highlighting reacts faster and no longer depends on the
+  // browser's coarse media timeupdate events.
+  smartWordByWordTimer=setInterval(()=>{if(smartWordByWordEnabled&&!audioPlayer.paused&&!audioPlayer.ended)smartUpdateKaraoke();},40);
+}
+smartStartWordByWordTicker();
 wordByWordToggle?.addEventListener('click',()=>smartSetWordByWord(!smartWordByWordEnabled,{announce:true}));smartRefreshWordByWordControl();
 audioPlayer.addEventListener('timeupdate',smartUpdateKaraoke);
 lyricsBody?.addEventListener('click',event=>{const line=event.target.closest('.lyric-line[data-line]');if(!line)return;const index=Number(line.dataset.line);const target=lyricLines[index]?.time;if(Number.isFinite(target)){audioPlayer.currentTime=Math.max(0,target);setLyricsAutoFollow(true);syncLyrics(true);showToast(`Lyrics synced · ${formatTime(target)}`);}});

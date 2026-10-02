@@ -151,6 +151,15 @@
   }
 
   async function searchBackedPlaylistSongs236(seed) {
+    // V25: real playlists and long mixes are resolved by their actual entries/tracklist.
+    // If the new resolver is available, never fall back to a generic themed search that can
+    // produce an incomplete fake playlist.
+    if (typeof window.echoAPI?.resolvePlaylistContent === 'function') {
+      try {
+        const resolved = await window.echoAPI.resolvePlaylistContent(seed);
+        return resolved?.success && Array.isArray(resolved.songs) ? uniqueSongs236(resolved.songs) : [];
+      } catch (_) { return []; }
+    }
     const title = String(seed?.title || '').replace(/\b(top|best|latest|new)\b/gi, ' ').replace(/\s+/g, ' ').trim();
     const artist = String(seed?.channel || '').trim();
     const query = `${title} ${artist} individual songs official audio`.trim();

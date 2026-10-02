@@ -1,7 +1,7 @@
 {
   "name": "deepeccho",
-  "version": "2.6.0",
-  "description": "DEEP-ECHO 1.0 FINAL - technical update version 2.6.0",
+  "version": "2.6.1",
+  "description": "DEEP-ECHO 2.6.1 - official Windows release",
   "main": "main.js",
   "author": "Daiyan",
   "license": "GPL-3.0",

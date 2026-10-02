@@ -223,6 +223,48 @@
     return score;
   }
 
+  const smartVibeGroups = [
+    ['romantic', /\b(love|romantic|lover|ishq|pyaar|pyar|mohabbat|dil|heart|jaan|tera|teri|mere|meri|tum|sajna|sanam)\b/],
+    ['sad', /\b(sad|broken|alone|cry|dard|judai|tanha|hurt|bewafa|yaad|memory|miss)\b/],
+    ['chill', /\b(chill|lofi|lo-fi|acoustic|soft|calm|unplugged|night|dream|ambient|slow)\b/],
+    ['energy', /\b(dance|party|workout|bass|edm|rock|energy|club|phonk|anthem)\b/],
+    ['hiphop', /\b(rap|hip hop|hip-hop|trap|drill|freestyle|bars|cypher)\b/],
+    ['soul', /\b(rnb|r&b|soul|jazz|groove|funk|smooth)\b/],
+    ['devotional', /\b(bhajan|devotional|aarti|mantra|allah|rab|khuda|shiv|krishna|ram|waheguru|sufi)\b/],
+    ['cinematic', /\b(ost|soundtrack|theme|cinematic|movie|film|score)\b/]
+  ];
+
+  function songVibes(song) {
+    const text = compactText(`${song?.title || ''} ${song?.channel || song?.artist || ''}`);
+    const out = new Set();
+    for (const [name, re] of smartVibeGroups) if (re.test(text)) out.add(name);
+    return out;
+  }
+
+  function vibeAffinity(a, b) {
+    const aa = songVibes(a), bb = songVibes(b);
+    if (!aa.size || !bb.size) return 0;
+    let common = 0; for (const vibe of aa) if (bb.has(vibe)) common++;
+    return common / Math.max(1, Math.min(aa.size, bb.size));
+  }
+
+  function scriptFamily(song) {
+    const text = String(song?.title || '');
+    if (/[\u0900-\u097F]/.test(text)) return 'devanagari';
+    if (/[\u0A00-\u0A7F]/.test(text)) return 'gurmukhi';
+    if (/[\u0600-\u06FF]/.test(text)) return 'arabic';
+    if (/[\uAC00-\uD7AF]/.test(text)) return 'hangul';
+    if (/[\u3040-\u30FF]/.test(text)) return 'kana';
+    if (/[\u4E00-\u9FFF]/.test(text)) return 'han';
+    return /[a-z]/i.test(text) ? 'latin' : '';
+  }
+
+  function preferenceQuality(sig = {}) {
+    const likes = Number(sig.likes || 0), completes = Number(sig.completes || 0), skips = Number(sig.skips || 0);
+    const positive = likes * 1.5 + completes;
+    return Math.max(-3, Math.min(3, positive * .55 - skips * .72));
+  }
+
   function candidateScore(song, seed, rankMap, recent, sourceRank = 0) {
     if (!song?.id || !seed?.id || song.id === seed.id || sameSongFamily(song, seed)) return -999;
     if (state.playedIds.has(song.id) || state.playedFamilies.has(familyKey(song))) return -999;
@@ -235,9 +277,15 @@
     if (artist && seedArtist && artist === seedArtist && !isGenericLabel(artist)) score += state.steps === 0 ? 4.8 : 1.55;
     score += titleVibeBoost(seed, song);
     score += titleVibeBoost(state.anchorSeed || seed, song) * .72;
+    score += vibeAffinity(seed, song) * 3.1;
+    score += vibeAffinity(state.anchorSeed || seed, song) * 1.35;
     score += artistTasteScore(song) + profileVibeScore(song);
     score += Math.min(1.9, overlapScore(song, state.anchorSeed || seed) * 1.28);
     score += Number(sig.likes || 0) * 1.55 + Number(sig.completes || 0) * 1.15 - Number(sig.skips || 0) * 2.05;
+    score += preferenceQuality(sig);
+    const seedScript = scriptFamily(seed), candidateScript = scriptFamily(song);
+    if (seedScript && candidateScript && seedScript === candidateScript) score += .7;
+    if (song?.lyricsVerified) score += .45;
     if (Number(sig.skips || 0) > Number(sig.completes || 0) + Number(sig.likes || 0) + 2) score -= 3.2;
     if (recent.has(song.id)) score -= 3.4;
     const seedSpecial = /\b(live|remix|slowed|reverb|sped up|nightcore|cover|karaoke)\b/.test(compactText(seed?.title));
@@ -257,14 +305,19 @@
     const clean = familyKey(seed) || compactText(seed?.title);
     const artist = artistKey(seed);
     const queries = [];
+    const vibes = [...songVibes(seed)].slice(0, 2);
     if (clean) {
       queries.push(`${clean} similar songs official audio`);
       queries.push(`${clean} radio mix songs`);
+      if (vibes.length) queries.push(`${clean} ${vibes.join(' ')} similar songs`);
     }
-    if (artist && !isGenericLabel(artist)) queries.push(`${artist} best songs official audio`);
+    if (artist && !isGenericLabel(artist)) {
+      queries.push(`${artist} best songs official audio`);
+      if (vibes.length) queries.push(`${artist} ${vibes[0]} songs`);
+    }
     const tasteArtist = knownTasteRows().map(row => artistKey(row?.song)).find(value => value && value !== artist && !isGenericLabel(value));
     if (tasteArtist) queries.push(`${tasteArtist} ${clean || 'similar'} songs official audio`);
-    return [...new Set(queries)].slice(0, 4);
+    return [...new Set(queries)].slice(0, 5);
   }
 
   function markPlayed(song) {
@@ -328,7 +381,7 @@
       if (!family || families.has(family)) continue;
       const artist = artistKey(row.song);
       const sameArtistChosen = chosen.filter(x => artist && artistKey(x) === artist).length;
-      if (sameArtistChosen >= 2) continue;
+      if ((chosen.length < 8 && sameArtistChosen >= 1) || sameArtistChosen >= 2) continue;
       families.add(family); chosen.push(row.song);
       if (chosen.length >= 24) break;
     }
@@ -336,8 +389,8 @@
     state.candidates = append ? uniqueSongs([...state.candidates, ...chosen]) : chosen;
     setStatus(state.candidates.length ? 'ready' : 'empty', network.source);
     try {
-      const first = state.candidates[0];
-      if (first && window.echoAPI?.prefetchSong) window.echoAPI.prefetchSong(first).catch(() => {});
+      const warm = state.candidates.slice(0, 2);
+      if (window.echoAPI?.prefetchSong) warm.forEach(song => window.echoAPI.prefetchSong(song).catch(() => {}));
     } catch (_) {}
     return state.candidates;
   }
@@ -494,7 +547,7 @@
 
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { compactText, familyTokens, familyKey, overlapScore, sameSongFamily, artistKey, durationSeconds, isEligibleContextType };
+    module.exports = { compactText, familyTokens, familyKey, overlapScore, sameSongFamily, artistKey, durationSeconds, isEligibleContextType, songVibes, vibeAffinity, scriptFamily, preferenceQuality };
   }
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
@@ -537,7 +590,7 @@
   try {
     const player = document.getElementById('audioPlayer');
     player?.addEventListener('play', () => {
-      if (enabled() && state.active && state.status === 'warming' && state.currentSeed?.id) scheduleBuild(state.currentSeed, 1500, false);
+      if (enabled() && state.active && state.status === 'warming' && state.currentSeed?.id) scheduleBuild(state.currentSeed, 850, false);
     });
   } catch (_) {}
 

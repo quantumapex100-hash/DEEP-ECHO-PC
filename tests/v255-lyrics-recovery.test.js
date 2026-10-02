@@ -51,7 +51,7 @@ test('V21 wires compatible-version recovery through main, preload and themed ren
 
 test('V21 search badge no longer promises Sync merely because the title says lyrics',()=>{
   const renderer=read('src/renderer.js');
-  assert.match(renderer,/lyricsVerified \? '<span class="lyrics-ready-badge"[^>]*>✓ Lyrics verified/);
+  assert.match(renderer,/lyricsVerified \? '<span class="lyrics-ready-badge"[^>]*>✓ Lyrics Supported/);
   assert.match(renderer,/lyricsReady \? '<span class="lyrics-ready-badge"[^>]*>Lyrics video/);
   assert.doesNotMatch(renderer,/Lyrics video · Sync/);
 });

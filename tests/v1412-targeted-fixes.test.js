@@ -37,7 +37,7 @@ test('plain lyrics can be upgraded to timed lines and ticker self-restarts',()=>
   assert.match(preload,/syncPlainLyrics/);
   assert.match(js,/syncPlainLyrics/);
   assert.match(main,/DEEP-ECHO AI timing/);
-  assert.match(main,/lyrics-cache-v12\.json/);
+  assert.match(main,/lyrics-cache-v14\.json/);
   assert.match(js,/loadedmetadata/);
   assert.match(js,/canplay/);
   assert.match(js,/smartUpdateKaraoke/);

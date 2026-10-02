@@ -211,3 +211,32 @@ body[data-theme="light"] .floating-progress-track::after{
 .floating-language-sub{display:block;max-width:96%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,"Segoe UI","Nirmala UI",sans-serif;font-size:clamp(10px,1.15vw,14px);font-weight:650;line-height:1.1;letter-spacing:0;opacity:.72;text-shadow:0 0 8px color-mix(in srgb,var(--fl-accent) 40%,transparent)}
 .floating-language-sub.translation{opacity:.55;font-style:italic}
 .floating-root.compact .floating-language-sub{font-size:clamp(9px,1vw,12px)}
+
+/* ===== DEEP-ECHO V23: free-floating lyric stage =====
+   Keep theme particles/glow, but never paint a rectangular plate behind the active lyric. */
+.floating-main-line{
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  outline:0!important;
+  padding:0!important;
+}
+.floating-current{
+  background-color:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+}
+.floating-current::before{
+  left:-12%!important;
+  right:-12%!important;
+  top:-34px!important;
+  bottom:-34px!important;
+  border:0!important;
+  border-radius:50%!important;
+  box-shadow:none!important;
+  background-color:transparent!important;
+  mask-image:radial-gradient(ellipse at center,#000 0 28%,rgba(0,0,0,.82) 48%,rgba(0,0,0,.34) 68%,transparent 88%)!important;
+  -webkit-mask-image:radial-gradient(ellipse at center,#000 0 28%,rgba(0,0,0,.82) 48%,rgba(0,0,0,.34) 68%,transparent 88%)!important;
+}

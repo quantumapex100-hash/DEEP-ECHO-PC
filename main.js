@@ -6,18 +6,19 @@ const https = require('https');
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
 const { getLyrics, withScriptVariants, isExplicitInstrumentalSong, scriptProfile, guessArtistTitle, seconds } = require('./lib/lyrics');
-const { getYouTubeLyrics, alignSyncedLyricsToCaptions } = require('./lib/youtube-captions');
+const { getYouTubeLyrics, alignSyncedLyricsToCaptionsStable } = require('./lib/youtube-captions');
 const { runTransfer, downloadDirectAudio } = require('./lib/transfer');
 const { transcribeSong } = require('./lib/auto-transcribe');
 const { exactLyricsFromVideo, exactCacheKey } = require('./lib/exact-lyrics');
 const { buildReferenceLyrics } = require('./lib/lyrics-reference');
-const { rankSearchResultsForLyrics } = require('./lib/lyrics-search-ranking');
+const { rankSearchResultsForLyrics, rankVerifiedSearchResults } = require('./lib/lyrics-search-ranking');
 const { getMultiProviderAlternatives } = require('./lib/lyrics-providers');
 const { translateLyricsPayload } = require('./lib/lyrics-translate');
 const { prepareKaraokeTrack } = require('./lib/karaoke-audio');
 const { rankCompatibleCandidates, buildCompatibleQueries, isUsableSyncedLyrics, verificationScore, lyricalHint } = require('./lib/lyrics-compatible-version');
 const { makeEntry:makeCanonicalLyricsEntry, readMatch:readCanonicalLyricsMatch, canonicalKey:canonicalLyricsKey } = require('./lib/lyrics-canonical-cache');
 const { runYtDlpSmart, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
+const { isPlaylistLike, explicitPlaylistSignal, extractTracklist, choosePlayableCandidate, playlistSourceUrl, mapPlaylistEntry } = require('./lib/playlist-content');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
 
@@ -791,19 +792,157 @@ async function searchMusic(query, limit = 20) {
     );
     const data = JSON.parse(stdout);
     const entries = (data.entries || []).filter((e) => e && e.id);
-    return entries.map((e) => ({
-      id: e.id,
-      title: e.title || 'Untitled',
-      channel: e.channel || e.uploader || '',
-      duration: formatDuration(e.duration),
-      thumbnail: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
-      url: `https://www.youtube.com/watch?v=${e.id}`
-    }));
+    return entries.map((e) => {
+      const rawUrl = String(e.webpage_url || e.url || '');
+      const playlist = explicitPlaylistSignal(e) || /playlist/i.test(String(e._type || '')) || /YoutubeTab/i.test(String(e.ie_key || e.extractor_key || ''));
+      const id = String(e.id || '').trim();
+      const url = playlist
+        ? (/^https?:/i.test(rawUrl) ? rawUrl : `https://www.youtube.com/playlist?list=${encodeURIComponent(id)}`)
+        : (/^https?:/i.test(rawUrl) && /watch\?v=/i.test(rawUrl) ? rawUrl : `https://www.youtube.com/watch?v=${id}`);
+      return {
+        id,
+        title: e.title || 'Untitled',
+        channel: e.channel || e.uploader || '',
+        duration: formatDuration(e.duration),
+        thumbnail: playlist ? (e.thumbnails?.at?.(-1)?.url || e.thumbnail || '') : `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        url,
+        ...(playlist ? { isPlaylist:true, playlistId:id, resultType:'playlist' } : {})
+      };
+    });
   } catch (err) {
     console.error('[search] FAILED:', err.message);
     return { error: err?.code === 'YOUTUBE_BOT_CHECK' ? 'YouTube bot-check laga raha hai. Settings > YouTube Access me browser login fallback enable kar sakte ho.' : err.message, errorCode: err?.code || '' };
   }
 }
+
+
+// ---------- Playlist / long-mix content resolver ----------
+// V25 keeps playlist extraction separate from lyrics. Real playlists use their real entries;
+// long mix videos use chapters / timestamped descriptions and resolve each track independently.
+function chapterFallbackSong(seed = {}, track = {}, index = 0) {
+  const baseId = String(seed.id || 'mix').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24) || 'mix';
+  const start = Math.max(0, Number(track.start || 0));
+  const end = Math.max(start + 1, Number(track.end || 0));
+  return {
+    id: `mix-${baseId}-${Math.round(start)}-${index}`,
+    title: track.title || `Track ${index + 1}`,
+    channel: `${seed.channel || 'Mix'} · Mix chapter`,
+    duration: formatDuration(end - start),
+    thumbnail: seed.thumbnail || '',
+    url: seed.url || `https://www.youtube.com/watch?v=${seed.id || ''}`,
+    startTime: start,
+    endTime: end,
+    chapterFallback: true,
+    sourceVideoId: seed.id || '',
+    skipLyricsVerification: true,
+    playlistTrackSource: track.source || 'chapter'
+  };
+}
+
+async function resolveOneMixTrack(track, seed, index) {
+  const queries = [
+    `${track.title} official audio`,
+    String(track.title || '')
+  ].map(q => q.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  let combined = [];
+  for (const query of queries) {
+    try {
+      const found = await searchMusic(query, 7);
+      if (Array.isArray(found)) combined.push(...found);
+    } catch (_) {}
+    const chosen = choosePlayableCandidate(track, combined);
+    if (chosen) return { ...chosen, playlistTrackSource:track.source || 'tracklist', resolvedFromMix:true };
+  }
+  // Every timestamped track remains playable even when YouTube search cannot confidently map
+  // an individual upload: play the exact chapter from the original long mix.
+  return chapterFallbackSong(seed, track, index);
+}
+
+async function resolveMixTracks(tracklist, seed, concurrency = 3) {
+  const tracks = Array.isArray(tracklist) ? tracklist : [];
+  const out = new Array(tracks.length);
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < tracks.length) {
+      const index = cursor++;
+      out[index] = await resolveOneMixTrack(tracks[index], seed, index);
+    }
+  };
+  await Promise.all(Array.from({ length:Math.min(Math.max(1, concurrency), tracks.length || 1) }, worker));
+  return out.filter(Boolean);
+}
+
+async function resolvePlaylistContent(seed = {}) {
+  if (!seed || typeof seed !== 'object') return { success:false, songs:[], error:'Playlist information missing.' };
+  if (!fs.existsSync(YTDLP_PATH)) return { success:false, songs:[], error:'yt-dlp.exe nahi mila. Setup-YtDlp.bat pehle chalao.' };
+  const sourceUrl = playlistSourceUrl(seed);
+
+  // Actual YouTube playlist: never reconstruct it from a generic search query.
+  if (explicitPlaylistSignal(seed) && sourceUrl) {
+    try {
+      const { stdout } = await runYtDlpSmart(
+        YTDLP_PATH,
+        ['--flat-playlist', '--yes-playlist', '--no-warnings', '-J', sourceUrl],
+        { maxBuffer:32 * 1024 * 1024, timeout:70000, purpose:'playlist-resolve', browserAuth:readYouTubeAccess(), allowFallbackClients:true }
+      );
+      const data = JSON.parse(stdout);
+      const seen = new Set();
+      const songs = [];
+      for (const entry of data.entries || []) {
+        const mapped = mapPlaylistEntry(entry);
+        if (!mapped?.id || seen.has(mapped.id)) continue;
+        seen.add(mapped.id); songs.push(mapped);
+      }
+      if (songs.length) return {
+        success:true, kind:'youtube-playlist', songs,
+        total:Number(data.playlist_count || data.n_entries || songs.length) || songs.length,
+        complete:!(data.playlist_count > songs.length), title:data.title || seed.title || 'Playlist'
+      };
+    } catch (error) {
+      console.warn('[playlist resolve] direct playlist unavailable:', error?.message || error);
+    }
+  }
+
+  // Long compilation/mix video: inspect real metadata, not theme-search guesses.
+  if (!sourceUrl) return { success:false, songs:[], error:'Playlist URL missing.' };
+  try {
+    const { stdout } = await runYtDlpSmart(
+      YTDLP_PATH,
+      ['--no-warnings', '--no-playlist', '--skip-download', '-J', sourceUrl],
+      { maxBuffer:24 * 1024 * 1024, timeout:50000, purpose:'playlist-resolve', browserAuth:readYouTubeAccess(), allowFallbackClients:true }
+    );
+    const info = JSON.parse(stdout);
+    const tracklist = extractTracklist(info);
+    if (!tracklist.complete || tracklist.tracks.length < 2) {
+      return { success:false, kind:'long-video', songs:[], error:'Reliable chapter/track list nahi mili. Is long mix ko normal video ki tarah play karo.' };
+    }
+    const tracks = tracklist.tracks.slice(0, 60);
+    const songs = await resolveMixTracks(tracks, { ...seed, url:sourceUrl, thumbnail:seed.thumbnail || info.thumbnail || '' }, 3);
+    if (songs.length !== tracks.length) {
+      return { success:false, kind:'long-video', songs:[], error:'Track list incomplete resolve hui; fake partial playlist nahi banayi gayi.' };
+    }
+    const resolvedCount = songs.filter(song => !song.chapterFallback).length;
+    return {
+      success:true,
+      kind:'mix-tracklist',
+      songs,
+      total:tracks.length,
+      complete:true,
+      resolvedCount,
+      chapterFallbackCount:songs.length - resolvedCount,
+      trackSource:tracklist.source,
+      title:info.title || seed.title || 'Mix'
+    };
+  } catch (error) {
+    console.warn('[playlist resolve] long mix unavailable:', error?.message || error);
+    return { success:false, songs:[], error:error?.message || 'Playlist tracks resolve nahi hue.' };
+  }
+}
+
+ipcMain.handle('resolve-playlist-content', async (_event, seed = {}) => {
+  try { return await resolvePlaylistContent(seed); }
+  catch (error) { return { success:false, songs:[], error:error?.message || String(error) }; }
+});
 
 // ---------- Smart Autoplay related-song discovery ----------
 function smartAutoplayMapEntries(entries, seedId = '') {
@@ -924,9 +1063,82 @@ async function searchUserMusic(query, limit = 20) {
   const ranked = rankSearchResultsForLyrics(base, lyric, q, limit);
   if (!Array.isArray(ranked)) return ranked;
   const known = knownLyricsReadyIds();
-  return ranked.map(item => known.has(String(item?.id||'')) ? { ...item, lyricsReady:true, lyricsVerified:true, versionKind:'lyrics-compatible' } : item);
+  // Previously verified exact-video lyric support should influence Search immediately, but it
+  // must not overpower relevance. A bounded score boost lets verified versions rise above
+  // comparable uploads while unrelated/weak matches stay below strong exact-song results.
+  return rankVerifiedSearchResults(ranked.map(item => {
+    if (isPlaylistLike(item)) return { ...item, lyricsReady:false, lyricsVerified:false, lyricsChecking:false, versionKind:'playlist' };
+    const verified = known.has(String(item?.id||''));
+    return verified ? { ...item, lyricsReady:true, lyricsVerified:true, versionKind:'lyrics-compatible' } : item;
+  }));
 }
 ipcMain.handle('search-music', async (_event, query) => searchUserMusic(query, 20));
+ipcMain.handle('verify-lyrics-support', async (_event, song = {}) => {
+  const id=String(song?.id||'').trim();
+  if(!id)return {id,verified:false};
+  if(knownLyricsReadyIds().has(id))return {id,verified:true,reason:'known-compatible',label:'✓ Lyrics Supported'};
+  const hot=lyricsHotReadyEntry(song); if(hot)return {id,verified:true,reason:'hot-ready',label:'✓ Lyrics Supported'};
+  const cached=lyricsSupportEntry(song); if(cached)return {id,verified:!!cached.verified,reason:cached.reason||'',label:cached.verified?'✓ Lyrics Supported':''};
+  if(!song?.url || !fs.existsSync(YTDLP_PATH))return {id,verified:false,reason:'verification-unavailable'};
+
+  // Deduplicate Search/playlist checks for the same exact video. Without this, opening a
+  // playlist while Search is still checking could launch several identical yt-dlp jobs.
+  if(lyricsSupportJobs.has(id))return lyricsSupportJobs.get(id);
+  const job=(async()=>{
+    // Non-lyrical uploads may need catalogue text to prove that their exact captions line up.
+    // Start that network work in parallel with YouTube caption discovery instead of waiting
+    // for yt-dlp first. Lyric-labelled videos can be accepted from real timed captions alone.
+    const providerPromise=lyricalHint(song)?Promise.resolve(null):getLyrics(song).catch(()=>null);
+    try {
+      const youtube=await getYouTubeLyrics(song,YTDLP_PATH,execFileAsync,fetch,{browserAuth:readYouTubeAccess(),tempRoot:path.join(cacheDir,'lyrics-support-check')});
+      if(!youtube?.syncedLyrics || !isUsableSyncedLyrics(youtube)){rememberLyricsSupport(song,false,'no-exact-timed-captions');return {id,verified:false,reason:'no-exact-timed-captions'};}
+      if(lyricalHint(song)){
+        const ready=withScriptVariants({...youtube,timingPrecision:'youtube-exact',timingOffsetSeconds:0});
+        rememberLyricsHotReady(song,ready,'lyric-video-timed-captions');
+        persistAutomaticLyricsResult(song,ready);
+        rememberLyricsSupport(song,true,'lyric-video-timed-captions');
+        return {id,verified:true,reason:'lyric-video-timed-captions',label:'✓ Lyrics Supported'};
+      }
+      const provider=await providerPromise;
+      if(provider?.syncedLyrics){
+        const aligned=alignSyncedLyricsToCaptionsStable(provider.syncedLyrics,youtube.syncedLyrics);
+        if(stableCaptionAlignment(aligned,.42)){
+          const ready=withScriptVariants({
+            ...provider,
+            syncedLyrics:aligned.syncedLyrics,
+            source:`${provider.source||'Lyrics'} text · ${youtube.source||'YouTube captions'} timing`,
+            timingPrecision:'youtube-aligned',
+            timingMatchCount:aligned.matched,
+            timingConfidence:aligned.confidence,
+            timingOffsetSeconds:aligned.offset,
+            detectedLanguage:youtube.captionLanguage||youtube.metadata?.language||'',
+            wordTimings:Array.isArray(youtube.wordTimings)?youtube.wordTimings:[],
+            wordTimingSource:youtube.wordTimingSource||''
+          });
+          rememberLyricsHotReady(song,ready,'provider+exact-video-timing');
+          persistAutomaticLyricsResult(song,ready);
+          rememberLyricsSupport(song,true,'provider+exact-video-timing');
+          return {id,verified:true,reason:'provider+exact-video-timing',label:'✓ Lyrics Supported'};
+        }
+      }
+      if(provider?.lyrics){
+        const plain=alignPlainLyricsToTimedTranscript(provider.lyrics,youtube.syncedLyrics);
+        if(plain && plain.matched>=3 && plain.confidence>=.46){
+          // Normal playback already prefers the exact caption timeline when catalogue text is
+          // plain-only. Cache that exact same result instead of inventing a new timing path.
+          const ready=withScriptVariants({...youtube,timingPrecision:'youtube-exact',timingOffsetSeconds:0});
+          rememberLyricsHotReady(song,ready,'plain+exact-video-timing');
+          persistAutomaticLyricsResult(song,ready);
+          rememberLyricsSupport(song,true,'plain+exact-video-timing');
+          return {id,verified:true,reason:'plain+exact-video-timing',label:'✓ Lyrics Supported'};
+        }
+      }
+      rememberLyricsSupport(song,false,'timing-not-verified'); return {id,verified:false,reason:'timing-not-verified'};
+    } catch(error){return {id,verified:false,reason:'check-failed',error:String(error?.message||error)};}
+  })();
+  lyricsSupportJobs.set(id,job);
+  try{return await job;}finally{if(lyricsSupportJobs.get(id)===job)lyricsSupportJobs.delete(id);}
+});
 
 // ---------- IPC: artist search ----------
 ipcMain.handle('search-artist', async (_event, query) => {
@@ -1248,15 +1460,21 @@ ipcMain.handle('set-window-opacity', (event, value) => {
 
 // Cache successful lyrics for offline use. V12 invalidates older timing data because
 // V9 Precision Sync now stores per-recording multi-anchor warped timelines.
-const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v12.json');
+const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v14.json');
 const exactLyricsCachePath = path.join(app.getPath('userData'), 'exact-lyrics-cache-v1.json');
 const lyricsCompatibleCachePath = path.join(app.getPath('userData'), 'lyrics-compatible-versions-v1.json');
+const lyricsSupportCachePath = path.join(app.getPath('userData'), 'lyrics-support-index-v1.json');
 const canonicalLyricsCachePath = path.join(app.getPath('userData'), 'lyrics-canonical-v1.json');
 const lyricsControllers = new Map();
 const lyricsTimingControllers = new Map();
 const lyricsUpgradeControllers = new Map();
 const exactLyricsControllers = new Map();
 const lyricsRecoveryControllers = new Map();
+// V26 speed layer: Search capability checks and normal lyric loading share verified
+// exact-video work in memory. This never changes timestamps; it only avoids repeating
+// the same yt-dlp/provider work after Search already proved a video is lyrics-ready.
+const lyricsSupportJobs = new Map();
+const lyricsHotReadyCache = new Map();
 
 function readJsonCache(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
@@ -1266,6 +1484,42 @@ function writeJsonCache(file, value) {
   const temp = file + '.tmp';
   fs.writeFileSync(temp, JSON.stringify(value), 'utf8');
   fs.renameSync(temp, file);
+}
+
+function stableCaptionAlignment(aligned, minConfidence = .38) {
+  if (!aligned || Number(aligned.matched||0) < 2 || Number(aligned.confidence||0) < minConfidence) return false;
+  const matched=Number(aligned.matched||0), unique=Number(aligned.uniqueMatched ?? matched), spread=Number(aligned.anchorSpread ?? 1);
+  if (matched >= 4) return unique >= 2 || Number(aligned.confidence||0) >= .72;
+  if (matched >= 3) return unique >= 2 && spread >= .22;
+  return unique >= 2 && spread >= .35 && Number(aligned.confidence||0) >= Math.max(.60,minConfidence);
+}
+function lyricsHotReadyEntry(song = {}) {
+  const id=String(song?.id||'').trim(); if(!id)return null;
+  const row=lyricsHotReadyCache.get(id); if(!row)return null;
+  if(Date.now()-Number(row.at||0)>45*60*1000){lyricsHotReadyCache.delete(id);return null;}
+  return row.payload && hasLyricsText(row.payload) ? row.payload : null;
+}
+function rememberLyricsHotReady(song = {}, payload = null, reason = '') {
+  const id=String(song?.id||'').trim(); if(!id||!hasLyricsText(payload))return;
+  lyricsHotReadyCache.set(id,{at:Date.now(),reason:String(reason||''),payload});
+  if(lyricsHotReadyCache.size>96)lyricsHotReadyCache.delete(lyricsHotReadyCache.keys().next().value);
+}
+function lyricsSupportEntry(song = {}) {
+  const id=String(song?.id||'').trim(); if(!id)return null;
+  try {
+    const row=readJsonCache(lyricsSupportCachePath)?.[id]; if(!row)return null;
+    const age=Date.now()-Number(row.checkedAt||0), ttl=row.verified ? 45*24*60*60*1000 : 12*60*60*1000;
+    return age <= ttl ? row : null;
+  } catch { return null; }
+}
+function rememberLyricsSupport(song = {}, verified = false, reason = '') {
+  const id=String(song?.id||'').trim(); if(!id)return;
+  try {
+    const map=readJsonCache(lyricsSupportCachePath);
+    map[id]={verified:!!verified,reason:String(reason||''),checkedAt:Date.now(),title:String(song.title||''),channel:String(song.channel||'')};
+    const rows=Object.entries(map).sort((a,b)=>Number(b[1]?.checkedAt||0)-Number(a[1]?.checkedAt||0)).slice(0,600);
+    writeJsonCache(lyricsSupportCachePath,Object.fromEntries(rows));
+  } catch {}
 }
 
 function lyricsTextForLanguageCheck(result) {
@@ -1331,6 +1585,10 @@ function persistAutomaticLyricsResult(song, result) {
     try { cache = JSON.parse(fs.readFileSync(lyricsCachePath, 'utf8')); } catch {}
     cache[key] = { ...result, backgroundCaptionUpgrade:false };
     writeJsonCache(lyricsCachePath, cache);
+    const precision=String(result.timingPrecision||'');
+    if (result.syncedLyrics && /youtube-(?:exact|aligned|warped)|audio-warped|lyrical-reference|exact-video/i.test(precision)) {
+      rememberLyricsSupport(song,true,precision||'verified-timing');
+    }
   } catch (error) { console.warn('[lyrics timing cache]', error.message); }
 }
 
@@ -1538,6 +1796,11 @@ ipcMain.handle('get-lyrics', async (event, song) => {
     if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId);
     return { ...exactCache[exactKey], exactCached:true };
   }
+  const hotReady = lyricsHotReadyEntry(song);
+  if (hotReady) {
+    if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId);
+    return { ...hotReady, supportHotCached:true };
+  }
   let cache = {};
   try { cache = JSON.parse(fs.readFileSync(lyricsCachePath, 'utf8')); } catch {}
   if (cache[key]) {
@@ -1607,8 +1870,8 @@ ipcMain.handle('get-lyrics', async (event, song) => {
   if (youtube?.syncedLyrics) {
     // Exact video captions are the strongest evidence for both language and timing.
     if (result.syncedLyrics && !lyricsLanguageMismatch(result, youtube)) {
-      const aligned = alignSyncedLyricsToCaptions(result.syncedLyrics, youtube.syncedLyrics);
-      if (aligned && aligned.matched >= 2 && aligned.confidence >= 0.42) {
+      const aligned = alignSyncedLyricsToCaptionsStable(result.syncedLyrics, youtube.syncedLyrics);
+      if (stableCaptionAlignment(aligned, .42)) {
         result = withScriptVariants({
           ...result,
           syncedLyrics: aligned.syncedLyrics,
@@ -1862,8 +2125,8 @@ ipcMain.handle('upgrade-lyrics-captions', async (event, song) => {
 
     if (youtube?.syncedLyrics) {
       if (original.syncedLyrics) {
-        const aligned = alignSyncedLyricsToCaptions(original.syncedLyrics, youtube.syncedLyrics);
-        if (aligned && aligned.matched >= 2 && aligned.confidence >= .38) {
+        const aligned = alignSyncedLyricsToCaptionsStable(original.syncedLyrics, youtube.syncedLyrics);
+        if (stableCaptionAlignment(aligned, .38)) {
           const enriched = withScriptVariants({ ...original, syncedLyrics:aligned.syncedLyrics,
             source:`${original.source} text · ${youtube.source} precision timing`, timingPrecision:'youtube-warped',
             timingMatchCount:aligned.matched, timingConfidence:aligned.confidence, timingOffsetSeconds:aligned.offset,
@@ -1926,8 +2189,8 @@ ipcMain.handle('upgrade-lyrics-captions', async (event, song) => {
       });
       if (signal.aborted || timed?.cancelled) return { cancelled:true };
       if (timed?.syncedLyrics) {
-        const aligned = alignSyncedLyricsToCaptions(original.syncedLyrics, timed.syncedLyrics);
-        if (aligned && aligned.matched >= 2 && aligned.confidence >= .36) {
+        const aligned = alignSyncedLyricsToCaptionsStable(original.syncedLyrics, timed.syncedLyrics);
+        if (stableCaptionAlignment(aligned, .36)) {
           const enriched = withScriptVariants({ ...original, syncedLyrics:aligned.syncedLyrics,
             source:`${original.source} text · actual-audio Precision Sync`, timingPrecision:'audio-warped',
             timingMatchCount:aligned.matched, timingConfidence:aligned.confidence, timingOffsetSeconds:aligned.offset,

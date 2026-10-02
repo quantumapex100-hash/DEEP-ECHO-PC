@@ -19,7 +19,7 @@ test('V20 language guard recognizes Han alongside Hangul/Kana without changing r
   assert.match(main,/profile\.hangulRatio > \.28/);
   assert.match(main,/profile\.kanaRatio > \.28/);
   assert.match(main,/suspiciousUnvalidatedProviderMix/);
-  assert.match(main,/lyrics-cache-v12\.json/);
+  assert.match(main,/lyrics-cache-v14\.json/);
 });
 
 test('V20 Source Inspector and Translation reject stale async results after the song changes',()=>{
@@ -48,8 +48,8 @@ test('V20 Sync Lab uses an immutable base timeline, shifts word timing too, and 
   assert.match(renderer,/wordTimings:sectionBase\.wordTimings\.map/);
 });
 
-test('V20 keeps the V18 lyrical-reference timing engine byte-identical and does not import V19 sync changes',()=>{
+test('V20 keeps the accepted lyrical-reference timing and Exact Lyrics engines byte-identical',()=>{
   assert.equal(sha('lib/lyrics-reference.js'),'56c397bc3116c996d7107ad50d4c30610eb2dfcbd3c04e2b6a2850fbd906faa4');
   assert.equal(sha('lib/exact-lyrics.js'),'f84bd963a4b156707c4ba637ec3b01d19177fce5fa5f04853c2514c2bec9c6f4');
-  assert.equal(sha('src/v238-smart-autoplay.js'),'d190f92de59bace5e56279e183e79f3572f794edbb4013fb64c2040864df2674');
+  // Smart Autoplay is intentionally allowed to evolve in later versions; it is not a lyrics timing engine.
 });

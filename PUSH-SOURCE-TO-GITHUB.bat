@@ -57,7 +57,7 @@ if errorlevel 1 goto :gitfail
 
 echo [3/4] DEEP-ECHO source commit ho raha hai...
 git add -A
-git commit -m "DEEP-ECHO 2.1.0 auto-update foundation"
+git commit -m "DEEP-ECHO 2.6.1 release source"
 if errorlevel 1 (
   echo [INFO] Commit create nahi hua - ho sakta hai same files already committed hon.
 )

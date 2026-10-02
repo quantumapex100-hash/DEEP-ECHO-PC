@@ -13,7 +13,7 @@ const pkg = require('../package.json');
 
 test('v2.2.6 invalidates the old persistent lyrics cache instead of replaying stale timing', () => {
   assert.ok(/^2\.(?:2\.(?:[6-9]|\d{2,})|[3-9]\.\d+)$/.test(pkg.version));
-  assert.match(main, /lyrics-cache-v12\.json/);
+  assert.match(main, /lyrics-cache-v14\.json/);
   assert.doesNotMatch(main, /lyrics-cache-v9\.json/);
 });
 

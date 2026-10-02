@@ -1516,3 +1516,25 @@ body.deepeccho-game-mode[data-theme="space"] #particles{opacity:.28!important;}
 
 /* v2.5.0 V17 · search result hint only; playback choice remains user-controlled. */
 .lyrics-ready-badge{display:inline-flex;align-items:center;margin-left:8px;padding:2px 7px;border:1px solid color-mix(in srgb,var(--accent,#d9b65d) 45%,transparent);border-radius:999px;font-size:10px;line-height:1.2;letter-spacing:.02em;color:var(--text);background:color-mix(in srgb,var(--accent,#d9b65d) 12%,transparent);vertical-align:middle;white-space:nowrap}
+
+/* V24 · live Search lyric-capability status */
+.lyrics-ready-badge.checking{
+  opacity:.78;
+  border-style:dashed;
+  background:color-mix(in srgb,var(--accent,#d9b65d) 7%,transparent);
+  animation:v24LyricsCheckPulse 1.15s ease-in-out infinite;
+}
+.lyrics-ready-badge.verified{
+  font-weight:700;
+  border-color:color-mix(in srgb,var(--accent,#d9b65d) 70%,transparent);
+  background:color-mix(in srgb,var(--accent,#d9b65d) 18%,transparent);
+}
+@keyframes v24LyricsCheckPulse{0%,100%{opacity:.58}50%{opacity:1}}
+
+/* V25 · opened-playlist per-song capability. Search playlist cards never use this state. */
+.lyrics-ready-badge.unsupported{
+  opacity:.72;
+  border-color:color-mix(in srgb,var(--muted,#8b8b8b) 55%,transparent);
+  background:color-mix(in srgb,var(--muted,#8b8b8b) 9%,transparent);
+  color:var(--text-dim,var(--text));
+}

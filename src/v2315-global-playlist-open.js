@@ -5,7 +5,7 @@
   // It is deliberately additive: normal single-song playback is left untouched.
   const CACHE_KEY = 'deepeccho-detected-playlist-cache-v1';
   const CACHE_TTL = 6 * 60 * 60 * 1000;
-  const MAX_CACHE_ITEMS = 30;
+  const MAX_CACHE_ITEMS = 16;
 
   function durationSeconds(value) {
     const raw = String(value || '').trim();
@@ -84,7 +84,7 @@
   function saveCachedSongs(song, songs) {
     try {
       const cache = readCache();
-      cache[itemKey(song)] = { updatedAt: Date.now(), songs: songs.slice(0, 20) };
+      cache[itemKey(song)] = { updatedAt: Date.now(), songs: songs.slice(0, 500) };
       const trimmed = Object.fromEntries(Object.entries(cache)
         .sort((a, b) => Number(b[1]?.updatedAt || 0) - Number(a[1]?.updatedAt || 0))
         .slice(0, MAX_CACHE_ITEMS));
@@ -105,9 +105,23 @@
   async function resolvePlaylistSongs(song) {
     const cached = cachedSongs(song);
     if (cached.length) return cached;
+
+    // V25: use the real playlist / chapter resolver first. If it is available and says the
+    // source cannot be decomposed reliably, do NOT recreate the old fake theme-search list.
+    if (typeof window.echoAPI?.resolvePlaylistContent === 'function') {
+      let resolved = null;
+      try { resolved = await window.echoAPI.resolvePlaylistContent(song); } catch (_) { resolved = null; }
+      const songs = Array.isArray(resolved?.songs) ? resolved.songs : [];
+      if (resolved?.success && songs.length) {
+        saveCachedSongs(song, songs);
+        return songs;
+      }
+      return [];
+    }
+
+    // Compatibility fallback for older preload builds only.
     const search = window.echoAPI?.search;
     if (typeof search !== 'function') return [];
-
     const title = String(song?.title || '').trim();
     const channel = String(song?.channel || '').trim();
     const theme = playlistTheme(song);
@@ -115,7 +129,6 @@
       `${title} tracklist individual songs official audio`,
       `${theme} ${channel} songs official audio`
     ].map(q => q.replace(/\s+/g, ' ').trim()).filter(Boolean);
-
     const out = [];
     const seenIds = new Set([String(song?.id || '')]);
     const seenFamilies = new Set();

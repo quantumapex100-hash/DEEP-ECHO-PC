@@ -34,7 +34,7 @@ test('V9 Precision Sync uses multi-anchor piecewise timing instead of one global
 });
 
 test('V9 base lyrics engine can calibrate provider text from captions or already-installed local audio AI', () => {
-  assert.match(main, /lyrics-cache-v12\.json/);
+  assert.match(main, /lyrics-cache-v14\.json/);
   assert.match(main, /Precision Sync · matching lyrics to the actual playing audio/);
   assert.match(main, /timingPrecision:'youtube-warped'/);
   assert.match(main, /timingPrecision:'audio-warped'/);
