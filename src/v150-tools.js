@@ -80,6 +80,9 @@
   }
   async function resolvePreferredVersion(song) {
     const cfg = versionSettings();
+    // V17: an explicit result chosen from user Search is a version choice, not a hint.
+    // Keep that exact lyrical/original/audio upload instead of silently swapping it later.
+    if (song?.explicitVersion) return song;
     if (!cfg.enabled || cfg.preference === 'any' || !song?.id) return song;
     const currentScore = versionScore(song, cfg.preference);
     if (currentScore >= 17) return song;
@@ -709,18 +712,23 @@
     }
     const current = currentIndex >= 0 ? lyricLines[currentIndex]?.text || '' : '';
     const next = currentIndex >= 0 ? lyricLines[currentIndex + 1]?.text || '' : (lyricLines[0]?.text || '');
-    const signature = `${currentSong?.id || ''}:${lyricLines.length}:${lyricLines[0]?.time ?? ''}:${lyricLines.at(-1)?.time ?? ''}:${lyricLines[0]?.text ?? ''}:${lyricLines.at(-1)?.text ?? ''}:${plain.length}:${plain[0]?.textContent ?? ''}:${plain.at(-1)?.textContent ?? ''}`;
+    const languageSurface = window.__deepechoV18GetLanguageOverlayPayload?.() || {};
+    const languageSig = `${languageSurface.pronunciationEnabled?'p1':'p0'}:${languageSurface.translationEnabled?'t1':'t0'}:${languageSurface.targetLanguage||''}:${languageSurface.romanizedLines?.length||0}:${languageSurface.translatedLines?.length||0}`;
+    const signature = `${currentSong?.id || ''}:${lyricLines.length}:${lyricLines[0]?.time ?? ''}:${lyricLines.at(-1)?.time ?? ''}:${lyricLines[0]?.text ?? ''}:${lyricLines.at(-1)?.text ?? ''}:${plain.length}:${plain[0]?.textContent ?? ''}:${plain.at(-1)?.textContent ?? ''}:${languageSig}`;
     const payload = {
       title:currentSong?.title || '', artist:currentSong?.channel || '', current:current || plain[0]?.textContent || '',
       next:next || plain[1]?.textContent || '', fallback:currentSong ? 'Lyrics syncing…' : 'Play a song to see lyrics.',
       playbackTime, duration:Number(audioPlayer.duration || 0), sentAt:Date.now(), playing:!!audioPlayer.src && !audioPlayer.paused && !audioPlayer.ended, playbackRate:Number(audioPlayer.playbackRate || 1),
-      theme:document.body.dataset.theme || 'golden', fontScale:(Number(localStorage.getItem(STORAGE.lyricsFontSize) || 100) / 100) || 1
+      theme:document.body.dataset.theme || 'golden', fontScale:(Number(localStorage.getItem(STORAGE.lyricsFontSize) || 100) / 100) || 1,
+      pronunciationEnabled:!!languageSurface.pronunciationEnabled, translationEnabled:!!languageSurface.translationEnabled, targetLanguage:languageSurface.targetLanguage||''
     };
     const graphPacket = floatingGraphPacket();
     if (graphPacket) Object.assign(payload, graphPacket);
     if (forceLines || signature !== floatingLyricsSignature) {
       payload.lines = Array.isArray(lyricLines) ? lyricLines.map(line => ({ time:Number(line.time)||0, text:String(line.text||'') })) : [];
       payload.plainLines = plain.map(line => String(line.textContent || '').trim()).filter(Boolean);
+      payload.romanizedLines = Array.isArray(languageSurface.romanizedLines) ? languageSurface.romanizedLines.map(line=>({time:Number(line?.time)||0,text:String(line?.text||'')})) : [];
+      payload.translatedLines = Array.isArray(languageSurface.translatedLines) ? languageSurface.translatedLines.map(line=>({time:Number(line?.time)||0,text:String(line?.text||'')})) : [];
       floatingLyricsSignature = signature;
     }
     if (floatingEnabled) window.echoAPI.syncFloatingLyrics(payload);

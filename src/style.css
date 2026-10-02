@@ -1513,3 +1513,6 @@ body.deepeccho-game-mode[data-theme="space"] #particles{opacity:.28!important;}
 .exact-lyrics-progress-track span{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--gold),var(--gold-bright));box-shadow:0 0 10px color-mix(in srgb,var(--gold) 50%,transparent);transition:width .24s ease}
 .exact-lyrics-progress small{font-size:8.5px;line-height:1.25;color:var(--text-dim);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:760px){.exact-lyrics-control{width:100%}.exact-lyrics-toggle{width:100%}.exact-lyrics-progress small{max-width:none}}
+
+/* v2.5.0 V17 · search result hint only; playback choice remains user-controlled. */
+.lyrics-ready-badge{display:inline-flex;align-items:center;margin-left:8px;padding:2px 7px;border:1px solid color-mix(in srgb,var(--accent,#d9b65d) 45%,transparent);border-radius:999px;font-size:10px;line-height:1.2;letter-spacing:.02em;color:var(--text);background:color-mix(in srgb,var(--accent,#d9b65d) 12%,transparent);vertical-align:middle;white-space:nowrap}

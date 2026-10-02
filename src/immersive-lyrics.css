@@ -116,3 +116,8 @@ body[data-theme="golden"] .immersive-lyric-line.current{font-family:Georgia,"Pal
     gap:5px;
   }
 }
+/* V22 shared pronunciation / translation state */
+.immersive-lyric-line{display:flex;flex-direction:column;gap:.22em}
+.immersive-main-line{display:block}
+.immersive-language-sub{display:block;font-family:Inter,"Segoe UI","Nirmala UI",sans-serif;font-size:.55em;line-height:1.12;font-weight:650;letter-spacing:0;opacity:.72;color:color-mix(in srgb,var(--il-text) 76%,var(--il-accent) 24%)}
+.immersive-language-sub.translation{opacity:.55;font-style:italic}

@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('echoAPI', {
   smartCacheClear: () => ipcRenderer.invoke('smart-cache-clear'),
   deleteSong: (id) => ipcRenderer.invoke('delete-song', id),
   getLyrics: (song) => ipcRenderer.invoke('get-lyrics', song),
+  getLyricsAlternatives: (song) => ipcRenderer.invoke('get-lyrics-alternatives', song),
+  findLyricsCompatibleVersion: (song, options = {}) => ipcRenderer.invoke('find-lyrics-compatible-version', song, options),
+  translateLyrics: (payload, targetLanguage = 'en') => ipcRenderer.invoke('translate-lyrics', payload, targetLanguage),
+  prepareKaraokeTrack: (song, mode = 'vocal-low') => ipcRenderer.invoke('prepare-karaoke-track', song, mode),
   getExactLyrics: (song, options = {}) => ipcRenderer.invoke('get-exact-lyrics', song, options),
   upgradeLyricsCaptions: (song) => ipcRenderer.invoke('upgrade-lyrics-captions', song),
   syncPlainLyrics: (song, plainLyrics) => ipcRenderer.invoke('sync-plain-lyrics', song, plainLyrics),
@@ -33,6 +37,10 @@ contextBridge.exposeInMainWorld('echoAPI', {
   onLyricsStatus: (callback) => {
     ipcRenderer.removeAllListeners('lyrics-status');
     ipcRenderer.on('lyrics-status', (_event, status) => callback(status));
+  },
+  onLyricsRecoveryStatus: (callback) => {
+    ipcRenderer.removeAllListeners('lyrics-recovery-status');
+    ipcRenderer.on('lyrics-recovery-status', (_event, status) => callback(status));
   },
   setWindowOpacity: (value) => ipcRenderer.invoke('set-window-opacity', value),
   toggleAppFullscreen: () => ipcRenderer.invoke('toggle-app-fullscreen'),

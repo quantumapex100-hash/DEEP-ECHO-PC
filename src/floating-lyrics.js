@@ -10,6 +10,10 @@ const progressCurrentEl = document.getElementById('floatingProgressCurrent');
 const progressDurationEl = document.getElementById('floatingProgressDuration');
 let compact = localStorage.getItem('deepeccho-floating-compact') === '1';
 let syncedLines = [];
+let romanizedLines = [];
+let translatedLines = [];
+let pronunciationEnabled = false;
+let translationEnabled = false;
 let clock = { baseTime: 0, basePerf: performance.now(), playing: false, rate: 1 };
 let fallbackState = { current: '', next: '', fallback: 'Lyrics waiting…' };
 let clickThrough = false;
@@ -228,15 +232,29 @@ function estimatedPlaybackTime() {
   return Math.max(0, clock.baseTime + ((performance.now() - clock.basePerf) / 1000) * clock.rate);
 }
 
+function escapeFloating(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+function languageLineAt(lines,index){
+  if(!Array.isArray(lines)||index<0)return '';
+  const direct=lines[index]?.text; if(direct)return String(direct);
+  return '';
+}
+function paintFloatingCurrent(main,index){
+  const subs=[];
+  if(pronunciationEnabled){const text=languageLineAt(romanizedLines,index);if(text)subs.push(`<span class="floating-language-sub pronunciation">${escapeFloating(text)}</span>`);}
+  if(translationEnabled){const text=languageLineAt(translatedLines,index);if(text)subs.push(`<span class="floating-language-sub translation">${escapeFloating(text)}</span>`);}
+  curEl.innerHTML=`<span class="floating-main-line">${escapeFloating(main||'♪')}</span>${subs.join('')}`;
+}
+
 function renderSyncedLyrics() {
   if (!syncedLines.length) {
-    curEl.textContent = fallbackState.current || fallbackState.fallback || 'Lyrics waiting…';
+    paintFloatingCurrent(fallbackState.current || fallbackState.fallback || 'Lyrics waiting…', -1);
     nextEl.textContent = fallbackState.next || '';
     return;
   }
   const t = estimatedPlaybackTime();
   const index = floatingActiveIndex(syncedLines, t);
-  curEl.textContent = index >= 0 ? (syncedLines[index]?.text || '♪') : (fallbackState.current || syncedLines[0]?.text || 'Lyrics syncing…');
+  const main=index >= 0 ? (syncedLines[index]?.text || '♪') : (fallbackState.current || syncedLines[0]?.text || 'Lyrics syncing…');
+  paintFloatingCurrent(main,index >= 0 ? index : 0);
   nextEl.textContent = index >= 0 ? (syncedLines[index + 1]?.text || '') : (syncedLines[1]?.text || '');
 }
 
@@ -279,6 +297,10 @@ window.echoAPI?.onFloatingLyricsState?.((state = {}) => {
   songEl.textContent = [state.title, state.artist].filter(Boolean).join(' · ') || 'DEEP-ECHO Lyrics';
   fallbackState = { current: state.current || '', next: state.next || '', fallback: state.fallback || 'Lyrics waiting…' };
   if (Array.isArray(state.lines)) syncedLines = normalizeFloatingLines(state.lines);
+  if (Array.isArray(state.romanizedLines)) romanizedLines = state.romanizedLines.map(x=>({time:Number(x?.time)||0,text:String(x?.text||'')}));
+  if (Array.isArray(state.translatedLines)) translatedLines = state.translatedLines.map(x=>({time:Number(x?.time)||0,text:String(x?.text||'')}));
+  pronunciationEnabled=!!state.pronunciationEnabled; translationEnabled=!!state.translationEnabled;
+  root.classList.toggle('pronunciation-on',pronunciationEnabled);root.classList.toggle('translation-on',translationEnabled);
   if (Array.isArray(state.spectrum)) graphSpectrum = state.spectrum.map(v=>Math.max(0,Math.min(1,Number(v)||0)));
   if (state.audioGraph && typeof state.audioGraph === 'object') graphAudio = { ...graphAudio, ...state.audioGraph };
   clock = { baseTime: Number(state.playbackTime || 0), basePerf: performance.now(), playing: !!state.playing, rate: Number(state.playbackRate || 1) || 1 };

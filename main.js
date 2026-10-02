@@ -5,11 +5,18 @@ const http = require('http');
 const https = require('https');
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
-const { getLyrics, withScriptVariants, isExplicitInstrumentalSong, scriptProfile } = require('./lib/lyrics');
+const { getLyrics, withScriptVariants, isExplicitInstrumentalSong, scriptProfile, guessArtistTitle, seconds } = require('./lib/lyrics');
 const { getYouTubeLyrics, alignSyncedLyricsToCaptions } = require('./lib/youtube-captions');
 const { runTransfer, downloadDirectAudio } = require('./lib/transfer');
 const { transcribeSong } = require('./lib/auto-transcribe');
 const { exactLyricsFromVideo, exactCacheKey } = require('./lib/exact-lyrics');
+const { buildReferenceLyrics } = require('./lib/lyrics-reference');
+const { rankSearchResultsForLyrics } = require('./lib/lyrics-search-ranking');
+const { getMultiProviderAlternatives } = require('./lib/lyrics-providers');
+const { translateLyricsPayload } = require('./lib/lyrics-translate');
+const { prepareKaraokeTrack } = require('./lib/karaoke-audio');
+const { rankCompatibleCandidates, buildCompatibleQueries, isUsableSyncedLyrics, verificationScore, lyricalHint } = require('./lib/lyrics-compatible-version');
+const { makeEntry:makeCanonicalLyricsEntry, readMatch:readCanonicalLyricsMatch, canonicalKey:canonicalLyricsKey } = require('./lib/lyrics-canonical-cache');
 const { runYtDlpSmart, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
@@ -905,7 +912,21 @@ async function searchSuggestions(query) {
 
 // ---------- IPC: search ----------
 ipcMain.handle('search-suggestions', async (_event, query) => searchSuggestions(query));
-ipcMain.handle('search-music', async (_event, query) => searchMusic(query, 20));
+async function searchUserMusic(query, limit = 20) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const wantsLyrics = /\b(lyrics?|lyrical)\b/i.test(q);
+  const [base, lyric] = await Promise.all([
+    searchMusic(q, Math.max(limit + 8, 26)),
+    wantsLyrics ? Promise.resolve([]) : searchMusic(`${q} lyrics`, 16)
+  ]);
+  if (base && base.error) return base;
+  const ranked = rankSearchResultsForLyrics(base, lyric, q, limit);
+  if (!Array.isArray(ranked)) return ranked;
+  const known = knownLyricsReadyIds();
+  return ranked.map(item => known.has(String(item?.id||'')) ? { ...item, lyricsReady:true, lyricsVerified:true, versionKind:'lyrics-compatible' } : item);
+}
+ipcMain.handle('search-music', async (_event, query) => searchUserMusic(query, 20));
 
 // ---------- IPC: artist search ----------
 ipcMain.handle('search-artist', async (_event, query) => {
@@ -1229,10 +1250,13 @@ ipcMain.handle('set-window-opacity', (event, value) => {
 // V9 Precision Sync now stores per-recording multi-anchor warped timelines.
 const lyricsCachePath = path.join(app.getPath('userData'), 'lyrics-cache-v12.json');
 const exactLyricsCachePath = path.join(app.getPath('userData'), 'exact-lyrics-cache-v1.json');
+const lyricsCompatibleCachePath = path.join(app.getPath('userData'), 'lyrics-compatible-versions-v1.json');
+const canonicalLyricsCachePath = path.join(app.getPath('userData'), 'lyrics-canonical-v1.json');
 const lyricsControllers = new Map();
 const lyricsTimingControllers = new Map();
 const lyricsUpgradeControllers = new Map();
 const exactLyricsControllers = new Map();
+const lyricsRecoveryControllers = new Map();
 
 function readJsonCache(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
@@ -1267,13 +1291,25 @@ function lyricsLanguageMismatch(result, youtube) {
   const lang = String(youtube?.metadata?.originalLanguage || youtube?.metadata?.language || youtube?.captionLanguage || '').toLowerCase();
   const base = lang.split('-')[0];
   const profile = scriptProfile(text);
-  // Reject obvious cross-script substitutions.
-  if (base === 'en' && (profile.devanagariRatio > .28 || profile.gurmukhiRatio > .28 || profile.arabicRatio > .28)) return true;
+  // Reject obvious cross-script substitutions. V18 omitted CJK/Hangul/Kana here,
+  // so an English track could accept a provider's parallel Chinese/Korean/Japanese rows.
+  if (base === 'en' && (
+    profile.devanagariRatio > .28 || profile.gurmukhiRatio > .28 || profile.arabicRatio > .28 ||
+    profile.hangulRatio > .28 || profile.kanaRatio > .28 || profile.hanRatio > .28
+  )) return true;
   // For a known non-English source language, reject provider text that reads like an
   // English sentence. Genuine romanized Punjabi/Hindi/Arabic normally contains mostly
   // non-English lexical forms, so it remains eligible for the Romanized toggle.
   if (base && base !== 'en' && profile.latinRatio > .72 && likelyEnglishTranslation(text)) return true;
   return false;
+}
+
+function suspiciousUnvalidatedProviderMix(result) {
+  if (!result || result.languageValidated) return false;
+  if (!/YouLyPlus|LyricsPlus/i.test(String(result.source || ''))) return false;
+  const profile = scriptProfile(lyricsTextForLanguageCheck(result));
+  const foreign = Math.max(profile.hanRatio || 0, profile.hangulRatio || 0, profile.kanaRatio || 0);
+  return profile.latinRatio > .24 && foreign > .20;
 }
 
 function hasLyricsText(result) {
@@ -1296,6 +1332,136 @@ function persistAutomaticLyricsResult(song, result) {
     cache[key] = { ...result, backgroundCaptionUpgrade:false };
     writeJsonCache(lyricsCachePath, cache);
   } catch (error) { console.warn('[lyrics timing cache]', error.message); }
+}
+
+
+function recoverySongIdentity(song = {}) {
+  return String(song.id || song.url || `${song.title || ''}|${song.channel || ''}`).trim();
+}
+function compactRecoveryText(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+function recoveryCanonicalMetadata(song = {}, youtubeMeta = null) {
+  const guessed = guessArtistTitle(song || {});
+  const meta = youtubeMeta?.metadata || {};
+  let title = compactRecoveryText(meta.title || guessed.title || song.title || '');
+  let artist = compactRecoveryText(meta.artist || guessed.artist || '');
+  const rawTitle = compactRecoveryText(song.title || '');
+  // Lyrics channels commonly publish "Song (Lyrics) - Artist | Movie | Channel". The
+  // legacy Artist-Song parser reverses this shape, so pin the canonical song identity first.
+  const lyricalTagged = rawTitle.match(/^(.+?)\s*\(\s*(?:official\s+)?(?:lyrics?|lyrical)(?:\s+video)?\s*\)\s*[-–—]\s*([^|[(]+)(?:[|[(]|$)/i);
+  if ((!meta.artist || !meta.title) && lyricalTagged) {
+    title = compactRecoveryText(lyricalTagged[1]);
+    artist = compactRecoveryText(lyricalTagged[2]);
+  }
+  // Movie soundtrack uploads often use "Song (From Movie) - Artist". The legacy
+  // artist/title guesser interprets the left side as the artist; repair that shape here.
+  const soundtrack = rawTitle.match(/^(.+?)\s*\(\s*from\b[^)]*\)\s*[-–—]\s*([^|[(]+)(?:[|[(]|$)/i);
+  if ((!meta.artist || !meta.title) && soundtrack) {
+    title = compactRecoveryText(soundtrack[1]);
+    artist = compactRecoveryText(soundtrack[2]);
+  }
+  if (!artist && rawTitle.includes(' - ')) {
+    const parts = rawTitle.split(/\s+[-–—]\s+/).map(v => compactRecoveryText(v)).filter(Boolean);
+    if (parts.length >= 2 && /\b(lyrics?|lyrical)\b/i.test(parts[0])) {
+      title = parts[0].replace(/\([^)]*lyrics?[^)]*\)/ig, '').trim();
+      artist = parts[1].replace(/\([^)]*$/,'').split('|')[0].trim();
+    }
+  }
+  title = title.replace(/\b(official music video|official video|official audio|lyric video|lyrics video|lyrical video|lyrics?|full song|video song|audio song)\b/gi, ' ').replace(/\s+/g,' ').trim();
+  artist = artist.replace(/\b(official|vevo|topic)\b/gi, ' ').replace(/\s+/g,' ').replace(/^[-–—|]+|[-–—|]+$/g,'').trim();
+  return { title, artist };
+}
+function compatibleMapKey(song = {}, canonical = {}) {
+  return JSON.stringify([
+    compactRecoveryText(canonical.title || song.title || '').toLowerCase(),
+    compactRecoveryText(canonical.artist || song.channel || '').toLowerCase()
+  ]);
+}
+function readCompatibleLyricsMap() { return readJsonCache(lyricsCompatibleCachePath); }
+function rememberCompatibleLyricsVersion(seed, canonical, candidate) {
+  if (!candidate?.id) return;
+  try {
+    const map = readCompatibleLyricsMap();
+    map[compatibleMapKey(seed, canonical)] = {
+      candidate: {
+        id:String(candidate.id||''), title:String(candidate.title||''), channel:String(candidate.channel||''),
+        duration:candidate.duration||'', thumbnail:candidate.thumbnail||'', url:candidate.url||''
+      },
+      verifiedAt:Date.now()
+    };
+    // Keep the file bounded; oldest mappings are least useful when YouTube videos disappear.
+    const entries = Object.entries(map).sort((a,b)=>(Number(b[1]?.verifiedAt)||0)-(Number(a[1]?.verifiedAt)||0)).slice(0,180);
+    writeJsonCache(lyricsCompatibleCachePath, Object.fromEntries(entries));
+  } catch (error) { console.warn('[lyrics compatible map]', error?.message || error); }
+}
+function readCanonicalLyricsForSong(song = {}, canonical = {}) {
+  try { return readCanonicalLyricsMatch(readJsonCache(canonicalLyricsCachePath), song, canonical); } catch { return null; }
+}
+function persistCanonicalLyricsForSong(song = {}, result = {}, canonical = {}) {
+  try {
+    const entry = makeCanonicalLyricsEntry(song, canonical, result);
+    if (!entry) return;
+    const map = readJsonCache(canonicalLyricsCachePath);
+    map[entry.key] = entry;
+    const entries = Object.entries(map).sort((a,b)=>(Number(b[1]?.verifiedAt)||0)-(Number(a[1]?.verifiedAt)||0)).slice(0,260);
+    writeJsonCache(canonicalLyricsCachePath, Object.fromEntries(entries));
+  } catch (error) { console.warn('[canonical lyrics cache]', error?.message || error); }
+}
+function knownLyricsReadyIds() {
+  const ids = new Set();
+  try { for (const row of Object.values(readCompatibleLyricsMap())) if (row?.candidate?.id) ids.add(String(row.candidate.id)); } catch {}
+  return ids;
+}
+
+function recoveryStatus(event, song, stage, text, extra = {}) {
+  try { event.sender.send('lyrics-recovery-status', { songId:song?.id||'', title:song?.title||'', stage, text, ...extra }); } catch {}
+}
+function syntheticCanonicalSong(song, canonical) {
+  const artist = compactRecoveryText(canonical?.artist || '');
+  const title = compactRecoveryText(canonical?.title || song?.title || '');
+  return {
+    ...song,
+    title: artist ? `${artist} - ${title}` : title,
+    channel: artist || song?.channel || ''
+  };
+}
+async function probeCompatibleLyricsCandidate(candidate, canonical, options = {}) {
+  const signal = options.signal;
+  if (signal?.aborted) return null;
+  let youtube = null;
+  try {
+    if (candidate?.url && fs.existsSync(YTDLP_PATH)) {
+      youtube = await getYouTubeLyrics(candidate, YTDLP_PATH, execFileAsync, fetch, {
+        signal, browserAuth:readYouTubeAccess(), tempRoot:path.join(cacheDir,'lyrics-recovery')
+      });
+    }
+  } catch (_) {}
+  if (signal?.aborted) return null;
+  if (youtube?.syncedLyrics && isUsableSyncedLyrics(youtube)) {
+    const payload = withScriptVariants({
+      ...youtube,
+      timingPrecision:'youtube-exact', timingOffsetSeconds:0,
+      compatibleVersionVerified:true, compatibleVerification:'video-captions'
+    });
+    return { candidate, payload, verification:'video-captions', score:verificationScore(payload,candidate)+120 };
+  }
+  let provider = null;
+  try { provider = await getLyrics(candidate); } catch (_) {}
+  if (signal?.aborted) return null;
+  if (!isUsableSyncedLyrics(provider) && canonical?.title) {
+    try { provider = await getLyrics(syntheticCanonicalSong(candidate, canonical)); } catch (_) {}
+  }
+  if (signal?.aborted) return null;
+  if (!isUsableSyncedLyrics(provider)) return null;
+  if (youtube && lyricsLanguageMismatch(provider, youtube)) return null;
+  const payload = withScriptVariants({
+    ...provider,
+    timingPrecision:provider.timingPrecision || 'catalog-synced',
+    timingOffsetSeconds:Number(provider.timingOffsetSeconds||0),
+    compatibleVersionVerified:true, compatibleVerification:'synced-provider'
+  });
+  return { candidate, payload, verification:'synced-provider', score:verificationScore(payload,candidate)+55 };
 }
 
 function normalizeLyricWords(text) {
@@ -1374,7 +1540,33 @@ ipcMain.handle('get-lyrics', async (event, song) => {
   }
   let cache = {};
   try { cache = JSON.parse(fs.readFileSync(lyricsCachePath, 'utf8')); } catch {}
-  if (cache[key]) { if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId); return cache[key]; }
+  if (cache[key]) {
+    const cached = cache[key];
+    // V18 could cache YouLyPlus parallel translation rows (for example English + Chinese)
+    // before the source language was known. Re-check only those old unvalidated mixed-script
+    // entries instead of invalidating every good lyrics cache on the machine.
+    if (suspiciousUnvalidatedProviderMix(cached)) {
+      delete cache[key]; try { writeJsonCache(lyricsCachePath, cache); } catch {}
+    } else {
+      const precision = String(cached?.timingPrecision || '');
+      const alreadyCalibrated = /youtube-(?:aligned|warped|exact)|audio-warped|lyrical-reference-warped/.test(precision);
+      const returned = hasLyricsText(cached) && !alreadyCalibrated && !cached?.exactLyrics
+        ? { ...cached, backgroundCaptionUpgrade:true }
+        : cached;
+      if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId);
+      return returned;
+    }
+  }
+
+  // Song-level cache: same track across official MV / audio / lyric-video uploads can reuse
+  // verified lyric text. Recording-specific timing is deliberately discarded and recalibrated
+  // against the currently playing video in the existing background timing upgrade.
+  const earlyCanonical = recoveryCanonicalMetadata(song, null);
+  const canonicalCached = readCanonicalLyricsForSong(song, earlyCanonical);
+  if (canonicalCached) {
+    if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId);
+    return canonicalCached;
+  }
 
   const sendStatus = (payload) => {
     try { event.sender.send('lyrics-status', { songId: song.id || '', title: song.title || '', ...payload }); } catch {}
@@ -1394,6 +1586,10 @@ ipcMain.handle('get-lyrics', async (event, song) => {
   // Never let a catalogue-only instrumental flag suppress a real vocal track.
   if (result.instrumental && !isExplicitInstrumentalSong(song)) result = {};
   if (lyricsLanguageMismatch(result, youtube)) result = {};
+
+  if (hasLyricsText(result) && (youtube?.metadata?.originalLanguage || youtube?.metadata?.language || youtube?.captionLanguage)) {
+    result = { ...result, languageValidated:true };
+  }
 
   // If trustworthy provider lyrics are already available, return them now and let the
   // renderer request exact YouTube timing in the background. If the provider is empty
@@ -1482,9 +1678,161 @@ ipcMain.handle('get-lyrics', async (event, song) => {
       fs.writeFileSync(lyricsCachePath, JSON.stringify(cache), 'utf8');
     } catch (error) { console.warn('Lyrics cache:', error.message); }
   }
+  if (hasLyricsText(result)) {
+    const canonical = recoveryCanonicalMetadata(song, youtube);
+    persistCanonicalLyricsForSong(song, result, canonical);
+  }
   sendStatus({ stage: 'done', text: '' });
   if (lyricsControllers.get(senderId) === controller) lyricsControllers.delete(senderId);
   return result;
+});
+
+
+
+ipcMain.handle('find-lyrics-compatible-version', async (event, song = {}, requestOptions = {}) => {
+  const senderId = event.sender.id;
+  try { lyricsRecoveryControllers.get(senderId)?.abort(); } catch {}
+  const controller = new AbortController();
+  lyricsRecoveryControllers.set(senderId, controller);
+  const signal = controller.signal;
+  const finish = value => {
+    if (lyricsRecoveryControllers.get(senderId) === controller) lyricsRecoveryControllers.delete(senderId);
+    return value;
+  };
+  try {
+    if (!song?.title) return finish({ success:false, error:'Play a song first.' });
+    const earlyCanonical = recoveryCanonicalMetadata(song, null);
+    const knownCanonicalLyrics = readCanonicalLyricsForSong(song, earlyCanonical);
+    if (knownCanonicalLyrics && isUsableSyncedLyrics(knownCanonicalLyrics)) {
+      recoveryStatus(event, song, 'repaired', 'Known lyrics found for this song · calibrating to this video…', { progress:100 });
+      return finish({ success:true, mode:'current-repair', canonical:earlyCanonical, lyrics:knownCanonicalLyrics, canonicalCache:true });
+    }
+    recoveryStatus(event, song, 'inspect', 'Checking this video with cleaner song metadata…', { progress:8 });
+    let youtubeMeta = null;
+    if (song?.url && fs.existsSync(YTDLP_PATH)) {
+      try {
+        youtubeMeta = await getYouTubeLyrics(song, YTDLP_PATH, execFileAsync, fetch, {
+          signal, browserAuth:readYouTubeAccess(), tempRoot:path.join(cacheDir,'lyrics-recovery'), metadataOnly:true
+        });
+      } catch (_) {}
+    }
+    if (signal.aborted) return finish({ cancelled:true });
+    const canonical = recoveryCanonicalMetadata(song, youtubeMeta);
+
+    // First repair the CURRENT video. A common failure is an uploader-heavy title such as
+    // "Song (From Movie) - Artist"; providers are healthy, but the old parser asked for the
+    // wrong artist/title pair. Retrying with canonical metadata avoids an unnecessary video switch.
+    if (canonical.title) {
+      recoveryStatus(event, song, 'repair-current', 'Trying synced lyrics for this exact video…', { progress:18 });
+      let repaired = null;
+      try { repaired = await getLyrics(syntheticCanonicalSong(song, canonical)); } catch (_) {}
+      if (signal.aborted) return finish({ cancelled:true });
+      if (isUsableSyncedLyrics(repaired) && !lyricsLanguageMismatch(repaired, youtubeMeta)) {
+        repaired = withScriptVariants({
+          ...repaired,
+          compatibleVersionVerified:true,
+          compatibleVerification:'canonical-metadata-repair',
+          timingPrecision:repaired.timingPrecision || 'catalog-synced'
+        });
+        persistAutomaticLyricsResult(song, repaired);
+        persistCanonicalLyricsForSong(song, repaired, canonical);
+        recoveryStatus(event, song, 'repaired', 'Synced lyrics recovered for this video.', { progress:100 });
+        return finish({ success:true, mode:'current-repair', canonical, lyrics:repaired });
+      }
+    }
+
+    // A previously verified replacement gets the first chance, but it is re-probed so removed
+    // videos/provider outages cannot trap the user in another dead entry.
+    const mapping = readCompatibleLyricsMap()[compatibleMapKey(song, canonical)];
+    const recentMapping = mapping?.candidate && Date.now() - Number(mapping.verifiedAt||0) < 45*24*60*60*1000;
+    if (recentMapping) {
+      recoveryStatus(event, song, 'known-version', 'Re-checking the last lyrics-ready version…', { progress:28 });
+      const cachedProbe = await probeCompatibleLyricsCandidate(mapping.candidate, canonical, { signal });
+      if (signal.aborted) return finish({ cancelled:true });
+      if (cachedProbe) {
+        const candidate = { ...cachedProbe.candidate, lyricsReady:true, lyricsVerified:true, versionKind:lyricalHint(cachedProbe.candidate)?'lyrics':'lyrics-compatible' };
+        persistAutomaticLyricsResult(candidate, cachedProbe.payload);
+        persistCanonicalLyricsForSong(song, cachedProbe.payload, canonical);
+        recoveryStatus(event, song, 'ready', 'Lyrics-ready version found.', { progress:100, candidateId:candidate.id });
+        return finish({ success:true, mode:'switch', canonical, candidate, verification:cachedProbe.verification });
+      }
+    }
+
+    const queries = buildCompatibleQueries(song, canonical);
+    if (!queries.length) return finish({ success:false, error:'Song metadata is too incomplete to find another version.' });
+    recoveryStatus(event, song, 'search', 'Finding the same song in lyrics-friendly versions…', { progress:36 });
+    const settled = await Promise.allSettled(queries.map(q => searchMusic(q, 12)));
+    if (signal.aborted) return finish({ cancelled:true });
+    const merged = [];
+    for (const row of settled) if (row.status === 'fulfilled' && Array.isArray(row.value)) merged.push(...row.value);
+    const ranked = rankCompatibleCandidates(song, merged, canonical, 10);
+    if (!ranked.length) {
+      recoveryStatus(event, song, 'none', 'No safe same-song replacement was found.', { progress:100 });
+      return finish({ success:false, error:'No suitable same-song video found right now.', exactLyricsSuggested:true });
+    }
+
+    let best = null, checked = 0;
+    for (let i=0; i<ranked.length && i<9; i+=3) {
+      const batch = ranked.slice(i, i+3);
+      recoveryStatus(event, song, 'verify', `Verifying synced lyrics · ${Math.min(i+1,ranked.length)}-${Math.min(i+batch.length,ranked.length)} of ${Math.min(9,ranked.length)}…`, { progress:48 + Math.min(42, i*5) });
+      const probes = await Promise.all(batch.map(candidate => probeCompatibleLyricsCandidate(candidate, canonical, { signal }).catch(()=>null)));
+      if (signal.aborted) return finish({ cancelled:true });
+      checked += batch.length;
+      for (let j=0;j<probes.length;j++) {
+        const probe=probes[j]; if(!probe)continue;
+        probe.score += Number(batch[j]?._compatScore||0);
+        if (!best || probe.score > best.score) best=probe;
+      }
+      // Real timed captions on a high-ranked same-song candidate are strong enough to stop early.
+      if (best?.verification === 'video-captions' && best.score >= 285) break;
+      if (best && i >= 3 && best.score >= 145) break;
+    }
+    if (!best) {
+      recoveryStatus(event, song, 'none', 'Versions were found, but none had verified synced lyrics.', { progress:100 });
+      return finish({ success:false, error:'Same-song videos mile, lekin verified synced lyrics kisi par nahi mili.', exactLyricsSuggested:true, checked });
+    }
+    const rawCandidate = best.candidate || {};
+    const candidate = {
+      id:String(rawCandidate.id||''), title:String(rawCandidate.title||''), channel:String(rawCandidate.channel||''),
+      duration:rawCandidate.duration||'', thumbnail:rawCandidate.thumbnail||'', url:rawCandidate.url||'',
+      lyricsReady:true, lyricsVerified:true, versionKind:lyricalHint(rawCandidate)?'lyrics':'lyrics-compatible', explicitVersion:true
+    };
+    persistAutomaticLyricsResult(candidate, best.payload);
+    persistCanonicalLyricsForSong(song, best.payload, canonical);
+    rememberCompatibleLyricsVersion(song, canonical, candidate);
+    recoveryStatus(event, song, 'ready', `Verified lyrics version found · ${candidate.title}`, { progress:100, candidateId:candidate.id });
+    return finish({ success:true, mode:'switch', canonical, candidate, verification:best.verification, checked });
+  } catch (error) {
+    if (signal.aborted) return finish({ cancelled:true });
+    recoveryStatus(event, song, 'failed', 'Lyrics recovery could not finish.', { progress:100 });
+    return finish({ success:false, error:String(error?.message||error), exactLyricsSuggested:true });
+  } finally {
+    if (lyricsRecoveryControllers.get(senderId) === controller) lyricsRecoveryControllers.delete(senderId);
+  }
+});
+
+ipcMain.handle('get-lyrics-alternatives', async (_event, song = {}) => {
+  try {
+    const meta=guessArtistTitle(song); const duration=seconds(song.duration || 0);
+    const rows=await getMultiProviderAlternatives(song,meta,duration,fetch);
+    return rows.map(row=>withScriptVariants(row));
+  } catch (error) { return { error:String(error?.message||error) }; }
+});
+
+ipcMain.handle('translate-lyrics', async (_event, payload = {}, targetLanguage = 'en') => {
+  try { return await translateLyricsPayload(payload,targetLanguage,fetch); }
+  catch (error) { return { ...payload, error:`Translation failed: ${String(error?.message||error)}` }; }
+});
+
+ipcMain.handle('prepare-karaoke-track', async (event, song = {}, mode = 'vocal-low') => {
+  try {
+    const result=await prepareKaraokeTrack(song,mode,{
+      ytdlpPath:YTDLP_PATH, cacheRoot:path.join(cacheDir,'karaoke'), execFileAsync, browserAuth:readYouTubeAccess(),
+      onStatus:(payload)=>{try{event.sender.send('lyrics-status',{songId:song?.id||'',title:song?.title||'',...payload});}catch{}}
+    });
+    if(result?.success&&result.filepath)return {...result,fileUrl:pathToFileURL(result.filepath).href};
+    return result;
+  } catch (error) { return { success:false,error:String(error?.message||error) }; }
 });
 
 // Upgrade already-visible provider lyrics against the ACTUAL playing recording.
@@ -1541,6 +1889,26 @@ ipcMain.handle('upgrade-lyrics-captions', async (event, song) => {
       // Only use caption text itself when there is no provider text to preserve.
       if (!hasLyricsText(original)) {
         const enriched = withScriptVariants({ ...youtube, timingPrecision:'youtube-exact', timingOffsetSeconds:0 });
+        persistAutomaticLyricsResult(song, enriched);
+        return enriched;
+      }
+    }
+
+    // V17: if the currently playing music video has weak/missing lyric captions, use a
+    // separate lyrical-video reference automatically. Its caption timeline is mapped onto the
+    // ACTUAL playing audio with multiple audio anchors, so cinematic intros and mid-video
+    // dialogue breaks can change the offset without shifting the rest of the song incorrectly.
+    // This automatic path deliberately does NOT run OCR; heavy OCR remains the user-invoked
+    // Exact Lyrics rescue.
+    if (hasLyricsText(original) && song?.url && fs.existsSync(YTDLP_PATH)) {
+      sendStatus({ stage:'reference-search', text:'Precision Sync · finding a lyrical reference for this video…' });
+      const reference = await buildReferenceLyrics(song, original, {
+        ytdlpPath:YTDLP_PATH, tempRoot:path.join(cacheDir,'lyrics-reference'), execFileAsync, fetchImpl:fetch,
+        signal, browserAuth:readYouTubeAccess(), onStatus:sendStatus, targetCaptions:youtube?.syncedLyrics || ''
+      });
+      if (signal.aborted || reference?.cancelled) return { cancelled:true };
+      if (reference?.syncedLyrics) {
+        const enriched = withScriptVariants(reference);
         persistAutomaticLyricsResult(song, enriched);
         return enriched;
       }

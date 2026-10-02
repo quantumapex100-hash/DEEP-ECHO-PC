@@ -27,6 +27,10 @@ const playBtn=document.getElementById('immersivePlayBtn');
 const PREF_KEY='deepeccho-immersive-lyrics-v1';
 let timeline=[];
 let plainLines=[];
+let romanizedLines=[];
+let translatedLines=[];
+let pronunciationEnabled=false;
+let translationEnabled=false;
 let activeIndex=-2;
 let clock={baseTime:0,basePerf:performance.now(),playing:false,rate:1};
 let duration=0;
@@ -94,7 +98,7 @@ function estimatedTime(){return clock.playing?Math.max(0,clock.baseTime+((perfor
 function buildLines(){
   activeIndex=-2;
   if(timeline.length){
-    linesEl.innerHTML=timeline.map((line,i)=>`<p class="immersive-lyric-line" data-line="${i}">${escapeHtml(line.text)||'♪'}</p>`).join('');
+    linesEl.innerHTML=timeline.map((line,i)=>{const subs=[];if(pronunciationEnabled&&romanizedLines[i]?.text)subs.push(`<span class="immersive-language-sub pronunciation">${escapeHtml(romanizedLines[i].text)}</span>`);if(translationEnabled&&translatedLines[i]?.text)subs.push(`<span class="immersive-language-sub translation">${escapeHtml(translatedLines[i].text)}</span>`);return `<p class="immersive-lyric-line" data-line="${i}"><span class="immersive-main-line">${escapeHtml(line.text)||'♪'}</span>${subs.join('')}</p>`;}).join('');
   }else if(plainLines.length){
     linesEl.innerHTML=plainLines.map(text=>`<p class="immersive-plain-line">${escapeHtml(text)||'&nbsp;'}</p>`).join('');
   }else{
@@ -151,8 +155,14 @@ window.echoAPI?.getImmersiveLyricsPrefs?.().then?.(result=>{if(result?.prefs)app
 window.echoAPI?.onImmersiveLyricsState?.((state={})=>{
   document.body.dataset.theme=state.theme||'golden';
   songEl.textContent=state.title||'DEEP-ECHO Lyrics';artistEl.textContent=state.artist||'';
+  let languageChanged=false;
+  if(Array.isArray(state.romanizedLines)){romanizedLines=state.romanizedLines.map(x=>({time:Number(x?.time)||0,text:String(x?.text||'')}));languageChanged=true;}
+  if(Array.isArray(state.translatedLines)){translatedLines=state.translatedLines.map(x=>({time:Number(x?.time)||0,text:String(x?.text||'')}));languageChanged=true;}
+  if(typeof state.pronunciationEnabled==='boolean'&&pronunciationEnabled!==state.pronunciationEnabled){pronunciationEnabled=state.pronunciationEnabled;languageChanged=true;}
+  if(typeof state.translationEnabled==='boolean'&&translationEnabled!==state.translationEnabled){translationEnabled=state.translationEnabled;languageChanged=true;}
   if(Array.isArray(state.lines)){timeline=normalize(state.lines);plainLines=[];buildLines()}
   else if(!timeline.length&&Array.isArray(state.plainLines)){plainLines=state.plainLines.map(x=>String(x||'').trim()).filter(Boolean);buildLines()}
+  else if(languageChanged&&timeline.length)buildLines();
   if(Array.isArray(state.plainLines)&&!timeline.length){const next=state.plainLines.map(x=>String(x||'').trim()).filter(Boolean);if(next.join('\n')!==plainLines.join('\n')){plainLines=next;buildLines()}}
   if(Array.isArray(state.spectrum))spectrum=state.spectrum.map(v=>Math.max(0,Math.min(1,Number(v)||0)));
   if(Array.isArray(state.waveform))waveform=state.waveform.map(v=>Math.max(-1,Math.min(1,Number(v)||0)));

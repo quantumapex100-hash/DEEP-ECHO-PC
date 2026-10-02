@@ -205,3 +205,9 @@ body[data-theme="light"] .floating-progress-track::after{
   0%,100%{text-shadow:0 1px 2px rgba(255,255,255,.96),0 0 8px rgba(183,134,69,.16);filter:brightness(1)}
   50%{text-shadow:0 1px 2px rgba(255,255,255,.98),0 0 13px rgba(183,134,69,.30);filter:brightness(1.035)}
 }
+/* V22 pronunciation / translation mirror */
+.floating-current{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.floating-main-line{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.floating-language-sub{display:block;max-width:96%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,"Segoe UI","Nirmala UI",sans-serif;font-size:clamp(10px,1.15vw,14px);font-weight:650;line-height:1.1;letter-spacing:0;opacity:.72;text-shadow:0 0 8px color-mix(in srgb,var(--fl-accent) 40%,transparent)}
+.floating-language-sub.translation{opacity:.55;font-style:italic}
+.floating-root.compact .floating-language-sub{font-size:clamp(9px,1vw,12px)}
