@@ -17,7 +17,7 @@ const { translateLyricsPayload } = require('./lib/lyrics-translate');
 const { prepareKaraokeTrack } = require('./lib/karaoke-audio');
 const { rankCompatibleCandidates, buildCompatibleQueries, isUsableSyncedLyrics, verificationScore, lyricalHint } = require('./lib/lyrics-compatible-version');
 const { makeEntry:makeCanonicalLyricsEntry, readMatch:readCanonicalLyricsMatch, canonicalKey:canonicalLyricsKey } = require('./lib/lyrics-canonical-cache');
-const { runYtDlpSmart, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
+const { runYtDlpSmart, runWithYtDlpContext, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
 const { isPlaylistLike, explicitPlaylistSignal, extractTracklist, choosePlayableCandidate, playlistSourceUrl, mapPlaylistEntry } = require('./lib/playlist-content');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
@@ -135,12 +135,14 @@ async function maybeRefreshYtDlp() {
     try { last = Number(JSON.parse(fs.readFileSync(ytdlpUpdateStamp, 'utf8'))?.checkedAt || 0); } catch {}
     if (Date.now() - last < 24 * 60 * 60 * 1000) return;
     fs.mkdirSync(path.dirname(ytdlpUpdateStamp), { recursive: true });
-    fs.writeFileSync(ytdlpUpdateStamp, JSON.stringify({ checkedAt: Date.now() }), 'utf8');
     const { stdout, stderr } = await execFileAsync(YTDLP_PATH, ['--update-to', 'nightly'], {
       windowsHide: true, timeout: 45000, maxBuffer: 4 * 1024 * 1024
     });
     const summary = String(stdout || stderr || '').replace(/\s+/g, ' ').trim().slice(0, 240);
     if (summary) console.log('[yt-dlp update]', summary);
+    // Mark the check only after a successful refresh. A transient failed update must
+    // not leave DeepEcho stuck on an obsolete YouTube extractor for the next 24h.
+    fs.writeFileSync(ytdlpUpdateStamp, JSON.stringify({ checkedAt: Date.now() }), 'utf8');
     resetYouTubeBackoff();
   } catch (error) {
     console.warn('[yt-dlp update] skipped:', String(error?.message || error).replace(/\s+/g, ' ').slice(0, 220));
@@ -277,25 +279,44 @@ function canonicalAccelerator(value) {
   const unique = [...new Set(parts)];
   return [...mods.filter(m => unique.includes(m)), ...unique.filter(p => !mods.includes(p))].join('+');
 }
-function reliableActionForAccelerator(action, accelerator) {
+function dispatchGlobalShortcutAction(action) {
+  if (action === 'floatingClickThrough') { toggleFloatingLyricsClickThrough(); return true; }
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  try { mainWindow.webContents.send('global-shortcut-action', action); return true; } catch { return false; }
+}
+const RELIABLE_DEFAULT_SHORTCUTS = [
+  { accelerator: 'CommandOrControl+Alt+X', action:'floatingClickThrough', callback:()=>toggleFloatingLyricsClickThrough() },
+  { accelerator: 'CommandOrControl+Alt+Shift+X', action:'immersiveLyricsClickThrough', callback:()=>applyImmersiveLyricsClickThrough(!immersiveLyricsClickThrough) },
+  { accelerator: 'CommandOrControl+Alt+Space', action:'playPause', callback:()=>dispatchGlobalShortcutAction('playPause') }
+];
+function reliableDefaultFor(action, accelerator) {
   const canonical = canonicalAccelerator(accelerator);
-  const isDefault = (action === 'floatingClickThrough' && canonical === 'control+alt+x')
-    || (action === 'playPause' && canonical === 'control+alt+space');
-  if (!isDefault) return false;
-  return [...reliableGlobalShortcuts.values()].includes(action);
+  return RELIABLE_DEFAULT_SHORTCUTS.find(item => item.action === action && canonicalAccelerator(item.accelerator) === canonical) || null;
+}
+function ensureReliableDefaultShortcut(item) {
+  if (!item) return false;
+  const accelerator = item.accelerator;
+  if (reliableGlobalShortcuts.get(accelerator) === item.action && globalShortcut.isRegistered(accelerator)) return true;
+  try {
+    if (globalShortcut.isRegistered(accelerator)) globalShortcut.unregister(accelerator);
+    const ok = globalShortcut.register(accelerator, item.callback);
+    if (ok) reliableGlobalShortcuts.set(accelerator, item.action);
+    else reliableGlobalShortcuts.delete(accelerator);
+    return !!ok;
+  } catch (err) {
+    reliableGlobalShortcuts.delete(accelerator);
+    console.warn(`[global shortcut] ${accelerator} failed:`, err?.message || err);
+    return false;
+  }
+}
+function reliableActionForAccelerator(action, accelerator) {
+  const item = reliableDefaultFor(action, accelerator);
+  if (!item) return false;
+  if (!globalShortcut.isRegistered(item.accelerator) || reliableGlobalShortcuts.get(item.accelerator) !== action) ensureReliableDefaultShortcut(item);
+  return globalShortcut.isRegistered(item.accelerator) && reliableGlobalShortcuts.get(item.accelerator) === action;
 }
 function registerReliableDefaultShortcuts() {
-  const defaults = [
-    ['CommandOrControl+Alt+X', 'floatingClickThrough', () => toggleFloatingLyricsClickThrough()],
-    ['CommandOrControl+Alt+Shift+X', 'immersiveLyricsClickThrough', () => applyImmersiveLyricsClickThrough(!immersiveLyricsClickThrough)],
-    ['CommandOrControl+Alt+Space', 'playPause', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('global-shortcut-action', 'playPause'); }]
-  ];
-  for (const [accelerator, action, callback] of defaults) {
-    try {
-      if (!globalShortcut.isRegistered(accelerator) && globalShortcut.register(accelerator, callback)) reliableGlobalShortcuts.set(accelerator, action);
-      else if (globalShortcut.isRegistered(accelerator)) reliableGlobalShortcuts.set(accelerator, action);
-    } catch (err) { console.warn(`[global shortcut] ${accelerator} failed:`, err?.message || err); }
-  }
+  for (const item of RELIABLE_DEFAULT_SHORTCUTS) ensureReliableDefaultShortcut(item);
 }
 function clearReliableDefaultShortcuts() {
   for (const accelerator of reliableGlobalShortcuts.keys()) { try { globalShortcut.unregister(accelerator); } catch {} }
@@ -367,13 +388,24 @@ function createWindow(useSplash = false) {
   mainWindow.on('enter-full-screen', () => sendFullscreenState(mainWindow));
   mainWindow.on('leave-full-screen', () => sendFullscreenState(mainWindow));
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.type === 'keyDown' && input.key === 'F11') {
+    const playPauseChord = input.type === 'keyDown' && !!input.control && !!input.alt && !input.shift && !input.meta && (input.code === 'Space' || input.key === ' ' || input.key === 'Space');
+    if (playPauseChord) {
+      // Focused-window fallback: even if Windows refuses the global registration, the requested
+      // Ctrl+Alt+Space shortcut still toggles the existing Play/Pause button path.
+      event.preventDefault();
+      dispatchGlobalShortcutAction('playPause');
+    } else if (input.type === 'keyDown' && input.key === 'F11') {
       event.preventDefault();
       toggleAppFullscreen(mainWindow);
     } else if (input.type === 'keyDown' && input.key === 'Escape' && mainWindow?.isFullScreen()) {
       event.preventDefault();
       setAppFullscreen(mainWindow, false);
     }
+  });
+  mainWindow.webContents.once('did-finish-load', () => {
+    // Retry defaults after the renderer exists. This repairs Windows sessions where registration
+    // was temporarily unavailable during app startup.
+    setTimeout(registerReliableDefaultShortcuts, 120);
   });
 
   if (useSplash) {
@@ -673,10 +705,7 @@ function registerGlobalShortcutMap(mapping = {}) {
     }
     let ok = false;
     try {
-      ok = globalShortcut.register(accelerator, () => {
-        if (action === 'floatingClickThrough') { toggleFloatingLyricsClickThrough(); return; }
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('global-shortcut-action', action);
-      });
+      ok = globalShortcut.register(accelerator, () => dispatchGlobalShortcutAction(action));
     } catch { ok = false; }
     result[action] = { accelerator, registered: !!ok };
     if (ok) registeredGlobalShortcuts.set(accelerator, action);
@@ -758,7 +787,9 @@ app.whenReady().then(() => {
   setupAutoUpdater();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(false);
+    registerReliableDefaultShortcuts();
   });
+  app.on('browser-window-focus', () => registerReliableDefaultShortcuts());
 });
 
 app.on('window-all-closed', () => {
@@ -1084,13 +1115,16 @@ ipcMain.handle('verify-lyrics-support', async (_event, song = {}) => {
   // Deduplicate Search/playlist checks for the same exact video. Without this, opening a
   // playlist while Search is still checking could launch several identical yt-dlp jobs.
   if(lyricsSupportJobs.has(id))return lyricsSupportJobs.get(id);
+  const controller = new AbortController();
+  lyricsSupportControllers.set(id, controller);
   const job=(async()=>{
     // Non-lyrical uploads may need catalogue text to prove that their exact captions line up.
     // Start that network work in parallel with YouTube caption discovery instead of waiting
     // for yt-dlp first. Lyric-labelled videos can be accepted from real timed captions alone.
     const providerPromise=lyricalHint(song)?Promise.resolve(null):getLyrics(song).catch(()=>null);
     try {
-      const youtube=await getYouTubeLyrics(song,YTDLP_PATH,execFileAsync,fetch,{browserAuth:readYouTubeAccess(),tempRoot:path.join(cacheDir,'lyrics-support-check')});
+      const youtube=await runWithYtDlpContext({affectsGlobalBackoff:false,requestClass:'lyrics-capability'},()=>getYouTubeLyrics(song,YTDLP_PATH,execFileAsync,fetch,{browserAuth:readYouTubeAccess(),tempRoot:path.join(cacheDir,'lyrics-support-check'),signal:controller.signal}));
+      if(youtube?.cancelled || controller.signal.aborted)return {id,verified:false,reason:'cancelled'};
       if(!youtube?.syncedLyrics || !isUsableSyncedLyrics(youtube)){rememberLyricsSupport(song,false,'no-exact-timed-captions');return {id,verified:false,reason:'no-exact-timed-captions'};}
       if(lyricalHint(song)){
         const ready=withScriptVariants({...youtube,timingPrecision:'youtube-exact',timingOffsetSeconds:0});
@@ -1134,10 +1168,16 @@ ipcMain.handle('verify-lyrics-support', async (_event, song = {}) => {
         }
       }
       rememberLyricsSupport(song,false,'timing-not-verified'); return {id,verified:false,reason:'timing-not-verified'};
-    } catch(error){return {id,verified:false,reason:'check-failed',error:String(error?.message||error)};}
+    } catch(error){
+      if(controller.signal.aborted || error?.name === 'AbortError')return {id,verified:false,reason:'cancelled'};
+      return {id,verified:false,reason:'check-failed',error:String(error?.message||error)};
+    }
   })();
   lyricsSupportJobs.set(id,job);
-  try{return await job;}finally{if(lyricsSupportJobs.get(id)===job)lyricsSupportJobs.delete(id);}
+  try{return await job;}finally{
+    if(lyricsSupportJobs.get(id)===job)lyricsSupportJobs.delete(id);
+    if(lyricsSupportControllers.get(id)===controller)lyricsSupportControllers.delete(id);
+  }
 });
 
 // ---------- IPC: artist search ----------
@@ -1216,7 +1256,16 @@ async function resolveStreamUrl(song, quality = 'auto') {
   const job = runYtDlpSmart(
     YTDLP_PATH,
     ['--no-warnings', '--no-playlist', '-f', format, '-g', song.url],
-    { maxBuffer: 4 * 1024 * 1024, timeout: 45000, purpose: 'playback', browserAuth: readYouTubeAccess(), allowFallbackClients: true }
+    {
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 9000,
+      purpose: 'playback',
+      browserAuth: readYouTubeAccess(),
+      allowFallbackClients: true,
+      clientOrder: ['default', 'web_embedded', 'android_vr'],
+      ignoreGlobalBackoff: true,
+      affectsGlobalBackoff: false
+    }
   ).then(({ stdout }) => {
     const url = String(stdout || '').split(/\r?\n/).map(v => v.trim()).find(v => /^https?:\/\//i.test(v));
     if (!url) throw new Error('Playable audio URL nahi mili.');
@@ -1227,7 +1276,47 @@ async function resolveStreamUrl(song, quality = 'auto') {
   return job;
 }
 
+async function prepareClassicPlaybackFile(song, progress = () => {}) {
+  if (!song?.url || !song?.id) throw new Error('Song URL missing.');
+  if (!fs.existsSync(YTDLP_PATH)) throw new Error('yt-dlp.exe nahi mila. Setup-YtDlp.bat pehle chalao.');
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const cleanId = String(song.id).replace(/[^a-zA-Z0-9_-]/g, '');
+  const prefix = `stream-${cleanId}`;
+  const existing = finishedFiles(cacheDir, prefix)
+    .map(name => ({ name, full: path.join(cacheDir, name), stat: fs.statSync(path.join(cacheDir, name)) }))
+    .filter(item => item.stat.isFile() && Date.now() - item.stat.mtimeMs < 12 * 60 * 60 * 1000)
+    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)[0];
+  if (existing) {
+    progress({ percent: 92, status: 'Classic cache ready' });
+    return { filepath: existing.full, fileUrl: pathToFileURL(existing.full).href, cached: true };
+  }
+  for (const name of finishedFiles(cacheDir, prefix)) { try { fs.unlinkSync(path.join(cacheDir, name)); } catch {} }
+  progress({ percent: 45, status: 'Restoring classic playback' });
+  await runYtDlpSmart(YTDLP_PATH, [
+    '--no-warnings', '--no-playlist', '-f',
+    'bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=webm]/bestaudio',
+    '-o', path.join(cacheDir, `${prefix}.%(ext)s`), song.url
+  ], {
+    maxBuffer: 20 * 1024 * 1024,
+    timeout: 120000,
+    purpose: 'classic-playback',
+    browserAuth: readYouTubeAccess(),
+    allowFallbackClients: true,
+    clientOrder: ['default', 'web_embedded', 'android_vr', 'web_safari'],
+    ignoreGlobalBackoff: true,
+    affectsGlobalBackoff: false
+  });
+  const name = finishedFiles(cacheDir, prefix).sort().pop();
+  if (!name) throw new Error('Classic playback audio file nahi bani.');
+  const filepath = path.join(cacheDir, name);
+  progress({ percent: 92, status: 'Classic audio ready' });
+  return { filepath, fileUrl: pathToFileURL(filepath).href, cached: false };
+}
+
 ipcMain.handle('stream-song', async (event, song, requestId, quality = 'auto') => {
+  // User playback always wins over speculative Search lyric checks. Abort those yt-dlp
+  // probes before resolving audio so background capability detection cannot starve playback.
+  cancelLyricsSupportChecks();
   const progress = value => sendProgress(event, 'stream-progress', { id: song.id, requestId, ...value });
   try {
     const already = readLibrary().find(s => s.id === song.id);
@@ -1244,9 +1333,18 @@ ipcMain.handle('stream-song', async (event, song, requestId, quality = 'auto') =
     }
     progress({ percent: 10, status: 'Connecting' });
     progress({ percent: 35, status: 'Resolving audio' });
-    const streamUrl = await resolveStreamUrl(song, quality);
-    progress({ percent: 85, status: 'Audio URL ready' });
-    return { success: true, song: { ...song, streamUrl } };
+    try {
+      const streamUrl = await resolveStreamUrl(song, quality);
+      progress({ percent: 85, status: 'Audio URL ready' });
+      return { success: true, song: { ...song, streamUrl } };
+    } catch (directError) {
+      // Restore the original DeepEcho safety path: if a direct YouTube URL cannot be
+      // resolved, prepare a short-lived local audio file instead of failing playback.
+      // This path is deliberately isolated from the global YouTube bot-check backoff.
+      console.warn('[playback] direct stream failed; trying classic local fallback:', String(directError?.message || directError).slice(0, 220));
+      const fallback = await prepareClassicPlaybackFile(song, progress);
+      return { success: true, song: { ...song, filepath: fallback.filepath, fileUrl: fallback.fileUrl, streamUrl: '', classicPlayback: true } };
+    }
   } catch (err) {
     progress({ percent: null, status: 'Failed' });
     const bot = err?.code === 'YOUTUBE_BOT_CHECK' || isBotChallenge(err);
@@ -1319,17 +1417,10 @@ ipcMain.handle('prepare-compatible-playback', async (_event, song) => {
       .filter(item => item.stat.isFile() && Date.now() - item.stat.mtimeMs < 6 * 60 * 60 * 1000)
       .sort((a,b) => b.stat.mtimeMs - a.stat.mtimeMs)[0];
     if (existing) return { success: true, filepath: existing.full, fileUrl: pathToFileURL(existing.full).href, cached: true };
-    // Remove stale versions for this video so format changes cannot leave ambiguity.
-    for (const name of finishedFiles(cacheDir, prefix)) { try { fs.unlinkSync(path.join(cacheDir, name)); } catch {} }
-    await runYtDlpSmart(YTDLP_PATH, [
-      '--no-warnings','--no-playlist','-f',
-      'bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=webm]/bestaudio',
-      '-o', path.join(cacheDir, `${prefix}.%(ext)s`), song.url
-    ], { maxBuffer: 12 * 1024 * 1024, timeout: 120000, purpose: 'compat-playback', browserAuth: readYouTubeAccess(), allowFallbackClients: true });
-    const name = finishedFiles(cacheDir, prefix).sort().pop();
-    if (!name) throw new Error('Compatibility audio file nahi bani.');
-    const filepath = path.join(cacheDir, name);
-    return { success: true, filepath, fileUrl: pathToFileURL(filepath).href };
+    // If Chromium rejects a resolved GoogleVideo URL, reuse the same old-style local
+    // playback fallback. It has its own cache and never inherits a bot-check cooldown.
+    const fallback = await prepareClassicPlaybackFile(song);
+    return { success: true, filepath: fallback.filepath, fileUrl: fallback.fileUrl, classicPlayback: true };
   } catch (err) {
     const bot = err?.code === 'YOUTUBE_BOT_CHECK' || isBotChallenge(err);
     return { success:false, errorCode: bot ? 'YOUTUBE_BOT_CHECK' : (err?.code || ''), error: err?.message || 'Compatibility playback failed.' };
@@ -1474,7 +1565,15 @@ const lyricsRecoveryControllers = new Map();
 // exact-video work in memory. This never changes timestamps; it only avoids repeating
 // the same yt-dlp/provider work after Search already proved a video is lyrics-ready.
 const lyricsSupportJobs = new Map();
+const lyricsSupportControllers = new Map();
 const lyricsHotReadyCache = new Map();
+
+function cancelLyricsSupportChecks() {
+  for (const controller of lyricsSupportControllers.values()) {
+    try { controller.abort(); } catch {}
+  }
+  lyricsSupportControllers.clear();
+}
 
 function readJsonCache(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }

@@ -121,3 +121,14 @@ body[data-theme="golden"] .immersive-lyric-line.current{font-family:Georgia,"Pal
 .immersive-main-line{display:block}
 .immersive-language-sub{display:block;font-family:Inter,"Segoe UI","Nirmala UI",sans-serif;font-size:.55em;line-height:1.12;font-weight:650;letter-spacing:0;opacity:.72;color:color-mix(in srgb,var(--il-text) 76%,var(--il-accent) 24%)}
 .immersive-language-sub.translation{opacity:.55;font-style:italic}
+
+/* V31: separate immersive overlay also keeps lyric text free, never card-like. */
+.immersive-lyric-line,.immersive-lyric-line.current,.immersive-main-line,.immersive-language-sub{
+  background-color:transparent!important;
+  border:none!important;
+  box-shadow:none!important;
+  outline:none!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+.immersive-lyrics-root.pronunciation-on .immersive-language-sub.pronunciation{display:none!important}

@@ -58,6 +58,7 @@ del /f /q "%YTDLP_DOWNLOAD%" >nul 2>&1
 echo [OK] Latest yt-dlp ready hai:
 "%YTDLP%" --version
 if errorlevel 1 goto :broken_existing
+call :ensure_js_runtime
 exit /b 0
 
 :curl_missing
@@ -74,6 +75,7 @@ if exist "%YTDLP%" (
     "%YTDLP%" --version
     if not errorlevel 1 (
         echo [OK] Existing yt-dlp use kiya ja raha hai.
+        call :ensure_js_runtime
         exit /b 0
     )
 )
@@ -81,6 +83,46 @@ if exist "%YTDLP%" (
 echo [ERROR] Working yt-dlp available nahi hai.
 echo Internet connection check karke Setup-YtDlp.bat dobara chalao.
 exit /b 1
+
+
+:ensure_js_runtime
+REM Modern YouTube extraction needs a supported external JavaScript runtime.
+REM DeepEcho can use Node 22+ (enabled by lib/ytdlp-smart.js), but we also keep a
+REM private Deno next to yt-dlp so playback is not dependent on the user's Node version.
+if exist "bin\deno.exe" (
+    "bin\deno.exe" --version >nul 2>&1
+    if not errorlevel 1 (
+        echo [OK] YouTube JS runtime ready: Deno
+        exit /b 0
+    )
+)
+
+set "DENO_ZIP=%TEMP%\deep-echo-deno-%RANDOM%-%RANDOM%.zip"
+set "DENO_DIR=%TEMP%\deep-echo-deno-%RANDOM%-%RANDOM%"
+set "DENO_URL=https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
+if exist "%DENO_ZIP%" del /f /q "%DENO_ZIP%" >nul 2>&1
+if exist "%DENO_DIR%" rmdir /s /q "%DENO_DIR%" >nul 2>&1
+
+echo [INFO] YouTube playback JS runtime prepare ho raha hai...
+curl.exe --fail --show-error --location --retry 2 --connect-timeout 15 -o "%DENO_ZIP%" "%DENO_URL%"
+if errorlevel 1 goto :deno_optional_fail
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%DENO_ZIP%' -DestinationPath '%DENO_DIR%' -Force" >nul 2>&1
+if errorlevel 1 goto :deno_optional_fail
+if not exist "%DENO_DIR%\deno.exe" goto :deno_optional_fail
+copy /y "%DENO_DIR%\deno.exe" "bin\deno.exe" >nul 2>&1
+if errorlevel 1 goto :deno_optional_fail
+"bin\deno.exe" --version >nul 2>&1
+if errorlevel 1 goto :deno_optional_fail
+if exist "%DENO_ZIP%" del /f /q "%DENO_ZIP%" >nul 2>&1
+if exist "%DENO_DIR%" rmdir /s /q "%DENO_DIR%" >nul 2>&1
+echo [OK] YouTube JS runtime ready: Deno
+exit /b 0
+
+:deno_optional_fail
+if exist "%DENO_ZIP%" del /f /q "%DENO_ZIP%" >nul 2>&1
+if exist "%DENO_DIR%" rmdir /s /q "%DENO_DIR%" >nul 2>&1
+echo [WARN] Deno runtime setup nahi hua. DeepEcho Node 22+ runtime try karega.
+exit /b 0
 
 :broken_existing
 echo [ERROR] yt-dlp file present hai lekin run nahi ho rahi.

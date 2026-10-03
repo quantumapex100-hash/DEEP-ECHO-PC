@@ -171,6 +171,12 @@ const resultsList = document.getElementById('resultsList');
 const searchHint = document.getElementById('searchHint');
 const searchViewTitle = document.getElementById('searchViewTitle');
 const searchModeText = document.getElementById('searchModeText');
+const searchProgressPanel = document.getElementById('searchProgressPanel');
+const searchProgressLabel = document.getElementById('searchProgressLabel');
+const searchProgressPercent = document.getElementById('searchProgressPercent');
+const searchProgressFill = document.getElementById('searchProgressFill');
+const searchOfflineState = document.getElementById('searchOfflineState');
+const searchGoDownloadsBtn = document.getElementById('searchGoDownloadsBtn');
 const libraryList = document.getElementById('libraryList');
 const libraryHint = document.getElementById('libraryHint');
 const likedList = document.getElementById('likedList');
@@ -498,6 +504,60 @@ function searchResultIsPlaylistLike(song) {
   return seconds >= 38 * 60 && /\b(?:songs?|music|hits?|vibes?|romantic|love|sad|chill|party|workout|night|bollywood|punjabi|hindi)\b/i.test(title);
 }
 
+// Search Instant-Play warmup: resolve a tiny bounded set of likely clicked songs in the
+// background while the user is reading results. The actual Play request still has absolute
+// priority in main.js and cancels any unrelated speculative warmup.
+let searchInstantWarmSerial = 0;
+let searchInstantWarmQueue = [];
+let searchInstantWarmRunning = false;
+function searchWarmCandidate(song) {
+  return !!song?.id && !song.filepath && !song.fileUrl && !song.streamUrl && !searchResultIsPlaylistLike(song);
+}
+function enqueueSearchInstantWarm(song, request = searchRequest, front = false) {
+  if (!window.echoAPI?.prefetchSong || !searchWarmCandidate(song)) return;
+  const existing = smartPreparedStreamUrls?.get?.(song.id);
+  if (existing && Date.now() - Number(existing.createdAt || 0) < 7 * 60 * 1000) return;
+  if (searchInstantWarmQueue.some(entry => String(entry.song?.id || '') === String(song.id))) return;
+  const entry = { song: queueSong(song), request, serial: searchInstantWarmSerial };
+  if (front) searchInstantWarmQueue.unshift(entry); else searchInstantWarmQueue.push(entry);
+  void pumpSearchInstantWarm();
+}
+async function pumpSearchInstantWarm() {
+  if (searchInstantWarmRunning) return;
+  searchInstantWarmRunning = true;
+  try {
+    while (searchInstantWarmQueue.length) {
+      const entry = searchInstantWarmQueue.shift();
+      if (!entry?.song || entry.serial !== searchInstantWarmSerial || entry.request !== searchRequest) continue;
+      const song = entry.song;
+      const cached = smartPreparedStreamUrls.get(song.id);
+      if (cached && Date.now() - Number(cached.createdAt || 0) < 7 * 60 * 1000) continue;
+      try {
+        const res = await window.echoAPI.prefetchSong(normalizeSong(song), window.__dinechoAudioQuality || 'auto');
+        if (entry.serial !== searchInstantWarmSerial || entry.request !== searchRequest) continue;
+        if (res?.success && res.streamUrl) {
+          smartPreparedStreamUrls.set(song.id, { url:res.streamUrl, createdAt:Date.now(), source:'search-warm' });
+          // Only the highest-priority candidate gets actual media-byte prebuffering; the rest
+          // keep a resolved URL so background work stays light and bot-check resistant.
+          if (searchInstantWarmQueue.length <= 1) smartWarmPreparedUrl(res.streamUrl);
+        }
+      } catch (_) {}
+      await new Promise(resolve => setTimeout(resolve, 90));
+    }
+  } finally {
+    searchInstantWarmRunning = false;
+  }
+}
+function beginSearchInstantWarm(results, request) {
+  searchInstantWarmSerial++;
+  searchInstantWarmQueue = [];
+  if (!Array.isArray(results) || request !== searchRequest) return;
+  const singles = results.filter(searchWarmCandidate);
+  // Two likely clicks only. This is intentionally much smaller than lyrics verification and
+  // strictly serial so Search can feel instant without recreating the old yt-dlp request storm.
+  singles.slice(0, 2).forEach(song => enqueueSearchInstantWarm(song, request, false));
+}
+
 function isPlaylistDetailContext(contextSpec) {
   return !!contextSpec && /(?:playlist|mix)/i.test(String(contextSpec.type || ''));
 }
@@ -556,7 +616,7 @@ async function verifyRenderedSearchLyricsSupport(results, request, contextSpec =
   // "Checking sync…" until exact-video timing is confirmed or the probe finishes.
   const queue = results.filter(song => !searchResultIsPlaylistLike(song)).slice()
     .sort((a,b) => Number(!!b.lyricsReady) - Number(!!a.lyricsReady) || Number(b.lyricsSearchScore||0) - Number(a.lyricsSearchScore||0))
-    .slice(0, 12);
+    .slice(0, 8);
   queue.forEach(song => { if (!song.lyricsVerified) { song.lyricsChecking = true; setSearchLyricsBadge(song, 'checking'); } });
   let cursor = 0, reorderTimer = 0;
   const scheduleReorder = () => {
@@ -574,36 +634,94 @@ async function verifyRenderedSearchLyricsSupport(results, request, contextSpec =
       if (!status?.verified) { setSearchLyricsBadge(song, 'done'); continue; }
       song.lyricsVerified = true; song.lyricsReady = true;
       setSearchLyricsBadge(song, 'supported');
+      // A newly verified lyrics-capable result is likely to rise toward the top; warm its
+      // audio URL too so the promoted result is ready when the user clicks it.
+      enqueueSearchInstantWarm(song, request, true);
       scheduleReorder();
     }
   };
-  const workerCount = Math.min(5, Math.max(1, queue.length));
+  const workerCount = Math.min(2, Math.max(1, queue.length));
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
   clearTimeout(reorderTimer);
   reorderRenderedSearchByLyricsSupport(results, contextSpec, request);
 }
+
+let searchProgressHideTimer = 0;
+function setSearchProgress(percent, label = 'Searching…') {
+  if (!searchProgressPanel) return;
+  clearTimeout(searchProgressHideTimer);
+  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  searchProgressPanel.classList.remove('hidden','offline');
+  searchOfflineState?.classList.add('hidden');
+  if (searchProgressLabel) searchProgressLabel.textContent = label;
+  if (searchProgressPercent) searchProgressPercent.textContent = `${value}%`;
+  if (searchProgressFill) searchProgressFill.style.width = `${value}%`;
+  searchProgressPanel.setAttribute('aria-label', `${label} ${value}%`);
+}
+function finishSearchProgress(label = 'Search ready') {
+  setSearchProgress(100, label);
+  searchProgressHideTimer = setTimeout(() => searchProgressPanel?.classList.add('hidden'), 520);
+}
+function hideSearchProgress() {
+  clearTimeout(searchProgressHideTimer);
+  searchProgressPanel?.classList.add('hidden');
+}
+function showSearchOfflineState() {
+  clearTimeout(searchProgressHideTimer);
+  if (searchProgressPanel) searchProgressPanel.classList.remove('hidden');
+  searchProgressPanel?.classList.add('offline');
+  searchOfflineState?.classList.remove('hidden');
+  if (searchHint) searchHint.textContent = 'Offline · Search needs an internet connection.';
+}
+function searchLooksOffline(error) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  const text = String(error?.message || error || '').toLowerCase();
+  return /offline|network|internet|enotfound|eai_again|failed to fetch|connection|timed? out/.test(text);
+}
+searchGoDownloadsBtn?.addEventListener('click', () => { hideSearchProgress(); activateTab('library'); });
+window.addEventListener('offline', () => { if (document.getElementById('searchView')?.classList.contains('active')) showSearchOfflineState(); });
+window.addEventListener('online', () => {
+  if (!searchProgressPanel?.classList.contains('offline')) return;
+  searchProgressPanel.classList.remove('offline');
+  searchOfflineState?.classList.add('hidden');
+  searchProgressPanel.classList.add('hidden');
+  if (searchHint?.textContent?.startsWith('Offline')) searchHint.textContent = 'Back online · search when ready.';
+});
 
 async function runSearch(mode = 'song', overrideQuery = '') {
   const request = ++searchRequest;
   const q = (overrideQuery || searchInput.value || '').trim();
   if (!q) return;
   activateTab('search');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    resultsList.innerHTML = '';
+    searchViewTitle.textContent = mode === 'artist' ? `Artist: ${q}` : 'Search Results';
+    searchModeText.textContent = mode === 'artist' ? 'Popular songs related to this artist' : 'Songs matching your search';
+    showSearchOfflineState();
+    return;
+  }
+  setSearchProgress(8, mode === 'artist' ? 'Preparing artist search…' : 'Preparing search…');
   searchViewTitle.textContent = mode === 'artist' ? `Artist: ${q}` : 'Search Results';
   searchModeText.textContent = mode === 'artist' ? 'Popular songs related to this artist' : 'Songs matching your search';
   searchHint.textContent = mode === 'artist' ? 'Searching artist songs...' : 'Searching...';
   resultsList.innerHTML = '';
 
   try {
+    setSearchProgress(24, 'Contacting music search…');
     const results = mode === 'artist' ? await window.echoAPI.searchArtist(q) : await window.echoAPI.search(q);
     if(request !== searchRequest)return;
+    setSearchProgress(64, 'Results received…');
     if (results && results.error) {
-      searchHint.textContent = 'Error: ' + results.error;
+      if (searchLooksOffline(results.error)) showSearchOfflineState();
+      else { hideSearchProgress(); searchHint.textContent = 'Error: ' + results.error; }
       return;
     }
     if (!results || !results.length) {
+      finishSearchProgress('Search complete');
       searchHint.textContent = 'No results found.';
       return;
     }
+    setSearchProgress(82, 'Preparing results…');
     searchHint.textContent = '';
     results.forEach((song,index) => {
       song._searchOriginalIndex = index;
@@ -611,11 +729,15 @@ async function runSearch(mode = 'song', overrideQuery = '') {
       if (searchResultIsPlaylistLike(song)) { song.lyricsChecking = false; song.lyricsReady = false; song.lyricsVerified = false; }
     });
     registerSongs(results);
+    if (mode === 'song') beginSearchInstantWarm(results, request);
     const context = makeContext(results, mode === 'artist' ? 'artist-search' : 'search', mode === 'artist' ? `Artist: ${q}` : 'Search Results', `${mode}:${q}`);
     results.forEach((song) => resultsList.appendChild(buildSongRow(song, false, context)));
+    finishSearchProgress('Search ready');
     if(mode==='song') void verifyRenderedSearchLyricsSupport(results,request,context);
   } catch (err) {
-    if(request === searchRequest) searchHint.textContent = 'Search failed: ' + err.message;
+    if(request !== searchRequest)return;
+    if (searchLooksOffline(err)) showSearchOfflineState();
+    else { hideSearchProgress(); searchHint.textContent = 'Search failed: ' + err.message; }
   }
 }
 
@@ -1285,6 +1407,11 @@ function buildSongRow(song, isLibrary, contextSpec = null) {
   playBtn.classList.add('row-icon');
   playBtn.title = 'Play';
   playBtn.setAttribute('aria-label', 'Play ' + song.title);
+  if (!isLibrary && !playlistLikeRow) {
+    const intentWarm = () => enqueueSearchInstantWarm(song, searchRequest, true);
+    playBtn.addEventListener('pointerenter', intentWarm, { passive:true });
+    playBtn.addEventListener('focus', intentWarm);
+  }
   playBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await startSingleSong(song, playBtn, contextSpec);
@@ -1883,6 +2010,89 @@ function updatePlayIcon() {
   playPauseBtn.title = playing ? 'Pause' : 'Play';
   playPauseBtn.setAttribute('aria-label', playPauseBtn.title);
 }
+
+// One compatibility recovery per selected song/request. The first remote source can be
+// rejected by Chromium even though yt-dlp already resolved it successfully. Previously
+// playLocal(), the <audio> error event and the bottom Play button could all start their
+// own recovery/play attempt, which produced a false "no supported sources" toast while
+// the first fallback was still preparing. Keep all three paths on one shared promise.
+let remoteMediaRecoveryInFlight = false;
+let playbackRecoveryPromise = null;
+let playbackRecoveryKey = '';
+function isUnsupportedPlaybackError(error) {
+  return error?.name === 'NotSupportedError' ||
+    /no supported source|src_not_supported|not supported/i.test(String(error?.message || '')) ||
+    audioPlayer.error?.code === 4;
+}
+async function recoverCompatiblePlayback(song, requestId = playRequest, reason = 'unsupported-source') {
+  if (!song?.id || !song.streamUrl || song.filepath || song.fileUrl || !window.echoAPI?.prepareCompatiblePlayback) {
+    return { success:false, skipped:true };
+  }
+  const key = `${requestId}:${song.id}`;
+  if (playbackRecoveryPromise && playbackRecoveryKey === key) return playbackRecoveryPromise;
+
+  playbackRecoveryKey = key;
+  remoteMediaRecoveryInFlight = true;
+  const status = reason === 'media-error' ? 'Restoring classic playback' : 'Preparing compatible audio';
+  showPlayLoading(null, status, song.title);
+
+  const recovery = (async () => {
+    try {
+      const fallback = await window.echoAPI.prepareCompatiblePlayback(normalizeSong(song));
+      if (requestId !== playRequest || String(currentSong?.id || '') !== String(song.id)) {
+        return { success:false, cancelled:true };
+      }
+      if (!fallback?.success || !fallback.fileUrl) {
+        const error = new Error(fallback?.error || 'Compatible audio could not be prepared');
+        error.code = fallback?.errorCode || 'COMPATIBLE_AUDIO_FAILED';
+        throw error;
+      }
+
+      audioPlayer.src = fallback.fileUrl;
+      audioAnalyserMediaKey = '';
+      resetVisualizerSignalState();
+      currentSong = {
+        ...currentSong,
+        filepath: fallback.filepath || '',
+        fileUrl: fallback.fileUrl,
+        streamUrl: '',
+        classicPlayback: true
+      };
+
+      await audioPlayer.play();
+      if (requestId !== playRequest || String(currentSong?.id || '') !== String(song.id)) {
+        return { success:false, cancelled:true };
+      }
+      if (song.chapterFallback && Number(song.startTime) > 0 && Number.isFinite(audioPlayer.duration)) {
+        try { audioPlayer.currentTime = Math.min(Math.max(0, Number(song.startTime)), Math.max(0, audioPlayer.duration - .05)); } catch (_) {}
+      }
+      smartScheduleSecondaryPlayback(currentSong, requestId, 250);
+      addRecentlyPlayed(song);
+      showPlayLoading(100, reason === 'media-error' ? 'Playing · restored mode' : 'Playing · compatibility mode', song.title);
+      loadingTimer = setTimeout(hidePlayLoading, 1200);
+      updatePlayIcon();
+      return { success:true, fallback };
+    } catch (error) {
+      if (requestId === playRequest && String(currentSong?.id || '') === String(song.id)) {
+        hidePlayLoading();
+        updatePlayIcon();
+        showToast('Audio start nahi hua: ' + (error?.message || 'compatible source failed'));
+      }
+      return { success:false, error };
+    }
+  })();
+
+  playbackRecoveryPromise = recovery;
+  try {
+    return await recovery;
+  } finally {
+    if (playbackRecoveryPromise === recovery) {
+      playbackRecoveryPromise = null;
+      playbackRecoveryKey = '';
+      remoteMediaRecoveryInFlight = false;
+    }
+  }
+}
 async function playLocal(song, requestId) {
   if (!song || (!song.filepath && !song.fileUrl && !song.streamUrl)) return;
   if (requestId === undefined) { requestId = ++playRequest; loadingRequest = null; }
@@ -1919,30 +2129,12 @@ async function playLocal(song, requestId) {
     loadingTimer = setTimeout(hidePlayLoading, 1200);
   } catch (error) {
     if (requestId !== playRequest) return;
-    const unsupported = error?.name === 'NotSupportedError' || /no supported source|src_not_supported|not supported/i.test(String(error?.message || '')) || audioPlayer.error?.code === 4;
-    if (unsupported && song.streamUrl && window.echoAPI.prepareCompatiblePlayback) {
-      try {
-        showPlayLoading(null, 'Preparing compatible audio', song.title);
-        const fallback = await window.echoAPI.prepareCompatiblePlayback(normalizeSong(song));
-        if (requestId !== playRequest) return;
-        if (fallback?.success && fallback.fileUrl) {
-          audioPlayer.src = fallback.fileUrl;
-          audioAnalyserMediaKey = ''; resetVisualizerSignalState();
-          currentSong = { ...currentSong, filepath: fallback.filepath || '', fileUrl: fallback.fileUrl, streamUrl: '' };
-          await audioPlayer.play();
-          if (song.chapterFallback && Number(song.startTime) > 0 && Number.isFinite(audioPlayer.duration)) {
-            try { audioPlayer.currentTime = Math.min(Math.max(0, Number(song.startTime)), Math.max(0, audioPlayer.duration - .05)); } catch (_) {}
-          }
-          // Restart secondary work from the known-good local compatibility source,
-          // but keep it off the audio-start critical path.
-          smartScheduleSecondaryPlayback(currentSong, requestId, 250);
-          addRecentlyPlayed(song);
-          showPlayLoading(100, 'Playing · compatibility mode', song.title);
-          loadingTimer = setTimeout(hidePlayLoading, 1200);
-          updatePlayIcon();
-          return;
-        }
-      } catch (_) {}
+    const unsupported = isUnsupportedPlaybackError(error);
+    const remoteStreamFailed = !!song.streamUrl && !song.filepath && !song.fileUrl;
+    if ((unsupported || remoteStreamFailed) && song.streamUrl && window.echoAPI?.prepareCompatiblePlayback) {
+      // This await joins any recovery already started by the media error event.
+      await recoverCompatiblePlayback(song, requestId, 'play-rejected');
+      return;
     }
     hidePlayLoading(); showToast('Audio start nahi hua: ' + error.message);
   }
@@ -1950,9 +2142,27 @@ async function playLocal(song, requestId) {
 }
 playPauseBtn.addEventListener('click', async () => {
   if (!audioPlayer.src) return;
+  // If a compatibility source is already being prepared, do not fire a second play()
+  // against the known-bad remote URL. Just wait for the shared recovery to finish.
+  if (playbackRecoveryPromise) {
+    showPlayLoading(null, 'Preparing compatible audio', currentSong?.title || '');
+    await playbackRecoveryPromise;
+    updatePlayIcon();
+    return;
+  }
   await resumeAudioAnalyser();
   if (!audioPlayer.paused) audioPlayer.pause();
-  else { try { await audioPlayer.play(); } catch (error) { showToast('Play failed: ' + error.message); } }
+  else {
+    try {
+      await audioPlayer.play();
+    } catch (error) {
+      if (isUnsupportedPlaybackError(error) && currentSong?.streamUrl && window.echoAPI?.prepareCompatiblePlayback) {
+        await recoverCompatiblePlayback(currentSong, playRequest, 'manual-resume');
+      } else {
+        showToast('Play failed: ' + error.message);
+      }
+    }
+  }
   updatePlayIcon();
 });
 ['play', 'pause', 'ended'].forEach(event => audioPlayer.addEventListener(event, updatePlayIcon));
@@ -1969,7 +2179,19 @@ audioPlayer.addEventListener('timeupdate', () => {
   if (typeof onSmartPlaybackEnded === 'function') onSmartPlaybackEnded();
   void playNext({ auto:true });
 });
-audioPlayer.addEventListener('error', () => { hidePlayLoading(); updatePlayIcon(); showToast('Audio file load nahi hui. Song dobara play karo.'); });
+audioPlayer.addEventListener('error', async () => {
+  // A local compatibility source may emit an intermediate error event while the shared
+  // recovery promise is still swapping sources. The recovery owner will report only if
+  // the final compatible source also fails.
+  if (playbackRecoveryPromise || remoteMediaRecoveryInFlight) return;
+  const song = currentSong;
+  const canRecoverRemote = !!song?.streamUrl && !song?.filepath && !song?.fileUrl && window.echoAPI?.prepareCompatiblePlayback;
+  if (canRecoverRemote) {
+    await recoverCompatiblePlayback(song, playRequest, 'media-error');
+    return;
+  }
+  hidePlayLoading(); updatePlayIcon(); showToast('Audio file load nahi hui. Song dobara play karo.');
+});
 audioPlayer.addEventListener('waiting', () => { if (!loadingRequest) showPlayLoading(null, 'Buffering', currentSong?.title); });
 audioPlayer.addEventListener('playing', () => { if (!loadingRequest) hidePlayLoading(); });
 let smartEndPrefetchSongId = '';
@@ -4037,6 +4259,7 @@ function renderRecentSearches() {
   clearRecentSearchesBtn?.classList.toggle('hidden', recent.length === 0 && !searchInput?.value?.trim());
 }
 function smartClearAllSearch() {
+  hideSearchProgress();
   setStored(STORAGE.recentSearches, []);
   if (searchInput) searchInput.value = '';
   if (resultsList) { resultsList.innerHTML = ''; resultsList.classList.remove('search-collection-grid'); }
@@ -4091,14 +4314,20 @@ runSearch = async function(mode='song', overrideQuery='') {
     resultsList.classList.remove('search-collection-grid');
     return v140RunSearchBase(mode,overrideQuery);
   }
-  activateTab('search'); resultsList.innerHTML=''; searchHint.textContent='Searching...';
+  activateTab('search'); resultsList.innerHTML='';
   const label=smartSearchType[0].toUpperCase()+smartSearchType.slice(1); searchViewTitle.textContent=`${label}: ${q}`; searchModeText.textContent=`Browse ${smartSearchType} before playing`;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) { showSearchOfflineState(); return; }
+  searchHint.textContent='Searching...'; setSearchProgress(8,`Preparing ${smartSearchType} search…`);
   try {
+    setSearchProgress(25,'Contacting music search…');
     const query = smartSearchType==='artists' ? `${q} best songs official audio` : smartSearchType==='albums' ? `${q} full album official audio` : `${q} playlist mix songs`;
     const results = smartSearchType==='artists' ? await window.echoAPI.searchArtist(q) : await window.echoAPI.search(query);
-    if(results?.error){searchHint.textContent='Error: '+results.error;return;} if(!Array.isArray(results)||!results.length){searchHint.textContent='No results found.';return;}
-    registerSongs(results); smartRenderSearchCollections(smartSearchType,q,results);
-  } catch(err){searchHint.textContent='Search failed: '+err.message;}
+    setSearchProgress(65,'Results received…');
+    if(results?.error){if(searchLooksOffline(results.error))showSearchOfflineState();else{hideSearchProgress();searchHint.textContent='Error: '+results.error;}return;}
+    if(!Array.isArray(results)||!results.length){finishSearchProgress('Search complete');searchHint.textContent='No results found.';return;}
+    setSearchProgress(84,'Building collections…');
+    registerSongs(results); smartRenderSearchCollections(smartSearchType,q,results); finishSearchProgress('Search ready');
+  } catch(err){if(searchLooksOffline(err))showSearchOfflineState();else{hideSearchProgress();searchHint.textContent='Search failed: '+err.message;}}
 };
 
 if (searchTypeTabs) searchTypeTabs.addEventListener('click', event => {
@@ -4718,6 +4947,21 @@ function smartRenderLyricsVariant(showOriginal) {
   smartShowingOriginalLyrics = ok && variant.mode === 'romanized' && smartHasLyricsVariant(variant) ? false : true;
   smartSyncOriginalToggle(); if (typeof smartSyncTranslationToggle === 'function') smartSyncTranslationToggle();
 }
+function smartSetPronunciationDisplay(enabled) {
+  if (!smartLastLyricsPayload) return false;
+  const wantsRoman = !!enabled;
+  const roman = smartRomanLyricsVariant();
+  if (wantsRoman && !smartHasLyricsVariant(roman)) return false;
+  const ok = smartPaintLyricsVariant(wantsRoman ? roman : smartOriginalLyricsVariant(), { fallback:!wantsRoman, toastOnFallback:false });
+  if (!ok) return false;
+  smartShowingOriginalLyrics = !wantsRoman;
+  document.body.classList.toggle('pronunciation-display-only', wantsRoman);
+  smartSyncOriginalToggle();
+  if (typeof smartRebuildImmersiveLyrics === 'function') smartRebuildImmersiveLyrics();
+  window.__deepecchoPushFloatingLyrics?.(true);
+  return true;
+}
+window.__deepechoSetPronunciationDisplay = smartSetPronunciationDisplay;
 lyricsOriginalToggle?.addEventListener('click',()=>smartRenderLyricsVariant(!smartShowingOriginalLyrics));
 
 function smartWordKey(value=''){
@@ -5070,8 +5314,9 @@ smartSyncTranslationToggle();
     getLyricLine:(index)=>lyricLines[Number(index)]?{...lyricLines[Number(index)]}:null,
     getTaste:()=>({liked:getLikedSongs().slice(0,80),recent:getStored(STORAGE.recent,[]).slice(0,80),signals:smartPreferenceSignals?.()||{}}),
     showToast:(message)=>showToast(message),activateTab:(name)=>activateTab(name),
-    renderSearchResults:(items,title='Ask DeepEcho',subtitle='Smart mix')=>{const songs=(items||[]).map(queueSong).filter(Boolean);registerSongs(songs);activateTab('search');resultsList.classList.remove('search-collection-grid');resultsList.innerHTML='';searchHint.textContent=songs.length?'':'No matching songs found.';searchViewTitle.textContent=title;searchModeText.textContent=subtitle;const ctx=makeContext(songs,'ask-deepecho',title,`ask:${Date.now()}`);songs.forEach(song=>resultsList.appendChild(buildSongRow(song,false,ctx)));},
-    applyLyricsPayload:(payload)=>{if(!payload)return false;applyLyricsTimingPayload(payload);smartCaptureLyricsPayload(payload);smartShowingTranslation=false;smartShowingOriginalLyrics=true;smartPaintLyricsVariant(smartOriginalLyricsVariant(),{fallback:true});return true;},
+    renderSearchResults:(items,title='Ask DeepEcho',subtitle='Smart mix')=>{hideSearchProgress();const songs=(items||[]).map(queueSong).filter(Boolean);registerSongs(songs);activateTab('search');resultsList.classList.remove('search-collection-grid');resultsList.innerHTML='';searchHint.textContent=songs.length?'':'No matching songs found.';searchViewTitle.textContent=title;searchModeText.textContent=subtitle;const ctx=makeContext(songs,'ask-deepecho',title,`ask:${Date.now()}`);songs.forEach(song=>resultsList.appendChild(buildSongRow(song,false,ctx)));},
+    setPronunciationDisplay:(enabled)=>smartSetPronunciationDisplay(!!enabled),
+    applyLyricsPayload:(payload)=>{if(!payload)return false;applyLyricsTimingPayload(payload);smartCaptureLyricsPayload(payload);smartShowingTranslation=false;smartShowingOriginalLyrics=true;document.body.classList.remove('pronunciation-display-only');smartPaintLyricsVariant(smartOriginalLyricsVariant(),{fallback:true});return true;},
     applySectionSync:(index,targetTime)=>{
       if(!Number.isFinite(Number(index))||!Number.isFinite(Number(targetTime))||!lyricLines[index])return null;
       const base=rememberSectionBase(false),baseLine=base.lines[Number(index)];if(!baseLine)return null;

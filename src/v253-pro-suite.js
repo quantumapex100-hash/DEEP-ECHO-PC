@@ -90,21 +90,32 @@
     };
   }
   window.__deepechoV18GetLanguageOverlayPayload=languageSurfacePayload;
-  function decorateRoot(root,trans,roman){
-    root?.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{line.querySelectorAll('.v18-lyric-sub').forEach(x=>x.remove());if(state.pronunciation&&roman[i]?.text){const sub=document.createElement('span');sub.className='v18-lyric-sub v18-pronunciation';sub.textContent=roman[i].text;line.appendChild(sub);}if(state.translation&&trans[i]?.text){const sub=document.createElement('span');sub.className='v18-lyric-sub v18-translation';sub.textContent=trans[i].text;line.appendChild(sub);}});
+  function decorateRoot(root,trans){
+    root?.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{
+      line.querySelectorAll('.v18-lyric-sub').forEach(x=>x.remove());
+      // Pronunciation is a replacement display mode, never a second/overlapping subtitle line.
+      if(!state.pronunciation&&state.translation&&trans[i]?.text){const sub=document.createElement('span');sub.className='v18-lyric-sub v18-translation';sub.textContent=trans[i].text;line.appendChild(sub);}
+    });
   }
   function decorateSubLines(){
-    const payload=bridge()?.getLyrics?.();if(!payload)return;const trans=linesFor(payload,'translatedSyncedLyrics','translatedLyrics'),roman=linesFor(payload,'romanizedSyncedLyrics','romanizedLyrics');
-    decorateRoot(document.getElementById('lyricsBody'),trans,roman);
-    // The in-app Immersive Player mirrors the same enriched lyric state instead of a base-only copy.
-    decorateRoot(document.getElementById('immersiveLyricsBody'),trans,roman);
-    pronBtn?.classList.toggle('active',state.pronunciation);translateBtn?.classList.toggle('active',state.translation);if(translateBtn)translateBtn.textContent=state.translation?'Translation ✓':'Translate';if(pronBtn)pronBtn.textContent=state.pronunciation?'Pronunciation ✓':'Pronunciation';
+    const payload=bridge()?.getLyrics?.();if(!payload)return;
+    const hasRoman=!!(payload.romanizedLyrics||payload.romanizedSyncedLyrics);
+    const pronunciationActive=!!state.pronunciation&&hasRoman;
+    bridge()?.setPronunciationDisplay?.(pronunciationActive);
+    document.body.classList.toggle('pronunciation-display-only',pronunciationActive);
+    const trans=linesFor(payload,'translatedSyncedLyrics','translatedLyrics');
+    decorateRoot(document.getElementById('lyricsBody'),trans);
+    // The in-app Immersive Player mirrors the same replacement text state.
+    decorateRoot(document.getElementById('immersiveLyricsBody'),trans);
+    pronBtn?.classList.toggle('active',pronunciationActive);translateBtn?.classList.toggle('active',state.translation&&!pronunciationActive);if(translateBtn)translateBtn.textContent=state.translation&&!pronunciationActive?'Translation ✓':'Translate';if(pronBtn)pronBtn.textContent=pronunciationActive?'Pronunciation ✓':'Pronunciation';
     window.__deepecchoPushFloatingLyrics?.(true);
   }
   async function toggleTranslation(){
     const payload=bridge()?.getLyrics?.();if(!payload)return;
     if(state.translation){translationSerial++;state.translation=false;decorateSubLines();syncLanguageControls();return;}
     if(state.translationBusy)return;
+    // Translation and Pronunciation are exclusive presentation modes.
+    if(state.pronunciation){state.pronunciation=false;bridge()?.setPronunciationDisplay?.(false);}
     const requestedSongKey=songKey(bridge()?.getSong?.()),serial=++translationSerial;
     let next=payload;const has=payload.translatedLyrics&&payload.translationLanguage===state.target;
     if(!has){
@@ -124,7 +135,14 @@
     if(serial!==translationSerial||songKey(bridge()?.getSong?.())!==requestedSongKey)return;
     state.translation=true;decorateSubLines();syncLanguageControls();
   }
-  function togglePron(){const p=bridge()?.getLyrics?.();if(!p?.romanizedLyrics&&!p?.romanizedSyncedLyrics){toast('Pronunciation is not available for this script yet');return;}state.pronunciation=!state.pronunciation;decorateSubLines();syncLanguageControls();}
+  function togglePron(){
+    const p=bridge()?.getLyrics?.();if(!p?.romanizedLyrics&&!p?.romanizedSyncedLyrics){toast('Pronunciation is not available for this script yet');return;}
+    const next=!state.pronunciation;
+    if(next){translationSerial++;state.translation=false;state.translationBusy=false;}
+    state.pronunciation=next;
+    bridge()?.setPronunciationDisplay?.(state.pronunciation);
+    decorateSubLines();syncLanguageControls();
+  }
   function syncLanguageControls(){const p=bridge()?.getLyrics?.();if(translateBtn)translateBtn.disabled=!p?.lyrics&&!p?.syncedLyrics;if(pronBtn)pronBtn.disabled=!p?.romanizedLyrics&&!p?.romanizedSyncedLyrics;decorateSubLines();}
   translateBtn?.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();toggleTranslation();},{capture:true});pronBtn?.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();togglePron();},{capture:true});
 

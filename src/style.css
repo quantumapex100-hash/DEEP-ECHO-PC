@@ -1538,3 +1538,55 @@ body.deepeccho-game-mode[data-theme="space"] #particles{opacity:.28!important;}
   background:color-mix(in srgb,var(--muted,#8b8b8b) 9%,transparent);
   color:var(--text-dim,var(--text));
 }
+
+/* ===== V31 pronunciation/search presentation safety =====
+   Presentation only: no playback, queue, autoplay or lyric-clock changes. */
+.topbar{position:relative;z-index:320;isolation:isolate}
+.search-area,.search-box{position:relative;z-index:321}
+main{position:relative;z-index:1}
+#searchView{position:relative;isolation:isolate}
+.search-smart-bar{position:relative;z-index:8;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:12px;min-width:0}
+.recent-search-wrap{position:relative;z-index:9;min-width:0;max-width:100%;justify-content:flex-end;align-content:flex-start}
+.recent-searches{min-width:0;max-width:100%}
+.recent-search-chip{max-width:min(220px,30vw);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:900px){.search-smart-bar{grid-template-columns:1fr}.recent-search-wrap,.recent-searches{justify-content:flex-start}.recent-search-chip{max-width:min(240px,44vw)}}
+
+.search-progress-panel{position:relative;z-index:6;margin:4px 0 15px;padding:11px 13px;border:1px solid color-mix(in srgb,var(--gold) 30%,var(--border));border-radius:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--panel) 92%,transparent),color-mix(in srgb,var(--gold) 5%,var(--panel-2)));box-shadow:0 10px 30px rgba(0,0,0,.16),0 0 20px color-mix(in srgb,var(--gold) 7%,transparent);overflow:hidden}
+.search-progress-panel.hidden{display:none}
+.search-progress-copy{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--text);font-size:12px;margin-bottom:8px}
+.search-progress-copy strong{font-weight:760;color:var(--gold-bright)}
+.search-progress-copy span{font-variant-numeric:tabular-nums;color:var(--text-dim);font-size:11px}
+.search-progress-track{position:relative;height:5px;border-radius:999px;overflow:hidden;background:color-mix(in srgb,var(--panel-3) 88%,transparent);box-shadow:inset 0 1px 3px rgba(0,0,0,.28)}
+.search-progress-track>i{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--gold-dim),var(--gold),var(--gold-bright));background-size:180% 100%;box-shadow:0 0 12px color-mix(in srgb,var(--gold) 48%,transparent);transition:width .18s ease;animation:v31SearchFlow 1.6s linear infinite}
+@keyframes v31SearchFlow{to{background-position:180% 0}}
+.search-offline-state{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.search-offline-state.hidden{display:none}
+.search-offline-state>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.search-offline-state strong{font-size:13px;color:var(--gold-bright)}
+.search-offline-state span{font-size:11px;color:var(--text-dim)}
+.search-progress-panel.offline .search-progress-copy,.search-progress-panel.offline .search-progress-track{display:none}
+.search-progress-panel.offline{border-color:color-mix(in srgb,var(--gold) 40%,var(--border));background:linear-gradient(135deg,color-mix(in srgb,var(--panel) 95%,transparent),color-mix(in srgb,var(--gold) 7%,var(--panel-2)))}
+@media(max-width:620px){.search-offline-state{align-items:flex-start;flex-direction:column}.search-offline-state button{width:100%}}
+@media(prefers-reduced-motion:reduce){.search-progress-track>i{animation:none}}
+
+/* Lyrics stay free-form in every in-app lyrics surface. Theme glow/particles may animate,
+   but the text row itself never becomes a card/plate/box. */
+#lyricsView .lyric-line,
+#lyricsView .lyric-line.current,
+.immersive-lyrics-body .lyric-line,
+.immersive-lyrics-body .lyric-line.current{
+  background-color:transparent!important;
+  box-shadow:none!important;
+  border-color:transparent!important;
+  outline-color:transparent;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+#lyricsView .lyric-line.current::after,
+.immersive-lyrics-body .lyric-line.current::after{
+  box-shadow:none!important;
+  border:none!important;
+  border-radius:50%!important;
+}
+body.pronunciation-display-only #lyricsView .v18-pronunciation,
+body.pronunciation-display-only .immersive-lyrics-body .v18-pronunciation{display:none!important}

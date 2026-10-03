@@ -5,32 +5,33 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 
-test('official release metadata is exactly 2.6.1 and contains no test-only product label', () => {
+test('official release metadata is exactly 2.6.2 and contains no test-only product label', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
   const html = read('src/index.html');
   const polish = read('src/v228-visual-polish.js');
-  assert.equal(pkg.version, '2.6.1');
-  assert.equal(lock.version, '2.6.1');
-  assert.equal(lock.packages[''].version, '2.6.1');
+  assert.equal(pkg.version, '2.6.2');
+  assert.equal(lock.version, '2.6.2');
+  assert.equal(lock.packages[''].version, '2.6.2');
   assert.doesNotMatch(pkg.description, /TEST|preview|do not release/i);
-  assert.match(html, /class="v228-test-label">2\.6\.1<\/div>/);
-  assert.doesNotMatch(html, /2\.6\.0 V\d+ TEST|do not release/i);
+  assert.match(html, /class="v228-test-label">2\.6\.2<\/div>/);
+  assert.doesNotMatch(html, /2\.6\.2 V\d+ TEST|do not release/i);
   assert.doesNotMatch(polish, /RELEASE_DISPLAY_LABEL|do not release|V2 TEST/);
 });
 
-test('2.6.1 What’s New describes the accepted V26 release line', () => {
+test('2.6.2 What’s New describes the accepted V33 release line', () => {
   const v200 = read('src/v200.js');
-  assert.match(v200, /'2\.6\.1':\[/);
-  assert.match(v200, /Faster Search lyrics capability checks/);
-  assert.match(v200, /Word by Word rendering/);
+  assert.match(v200, /'2\.6\.2':\[/);
+  assert.match(v200, /Instant Play warmup/);
+  assert.match(v200, /Playback recovery is coordinated/);
+  assert.match(v200, /Pronunciation ON replaces/);
+  assert.match(v200, /Search includes theme-aware progress/);
   assert.match(v200, /Smart Autoplay/);
-  assert.match(v200, /V23 lyric sync stability/);
 });
 
-test('one-click release script protects v2.6.1 tag creation behind local tests', () => {
-  const bat = read('RELEASE-2.6.1.bat');
-  assert.match(bat, /Expected package version 2\.6\.1/);
+test('one-click release script protects v2.6.2 tag creation behind local tests', () => {
+  const bat = read('RELEASE-2.6.2.bat');
+  assert.match(bat, /Expected package version 2\.6\.2/);
   assert.match(bat, /npm ci --no-audit --no-fund/);
   assert.match(bat, /npm test/);
   assert.ok(bat.indexOf('npm test') < bat.indexOf('git tag -a'));
@@ -38,14 +39,14 @@ test('one-click release script protects v2.6.1 tag creation behind local tests',
   assert.match(bat, /git push origin "%TAG%"/);
 });
 
-test('cloud workflow builds 2.6.1 and verifies updater-critical assets', () => {
+test('cloud workflow builds 2.6.2 and verifies updater-critical assets', () => {
   const workflow = read('.github/workflows/release-windows.yml');
-  assert.match(workflow, /packageVersion -ne '2\.6\.1'/);
+  assert.match(workflow, /packageVersion -ne '2\.6\.2'/);
   assert.match(workflow, /npm ci --no-audit --no-fund/);
   assert.match(workflow, /npm test/);
   assert.match(workflow, /npm run release/);
-  assert.match(workflow, /RELEASE-NOTES-2\.6\.1\.md/);
-  assert.ok(fs.existsSync(path.join(root, 'RELEASE-NOTES-2.6.1.md')));
+  assert.match(workflow, /RELEASE-NOTES-2\.6\.2\.md/);
+  assert.ok(fs.existsSync(path.join(root, 'RELEASE-NOTES-2.6.2.md')));
   assert.match(workflow, /releases\/latest/);
   assert.match(workflow, /DEEP-ECHO-\$packageVersion-Setup\.exe/);
   assert.match(workflow, /DEEP-ECHO-\$packageVersion-Setup\.exe\.blockmap/);

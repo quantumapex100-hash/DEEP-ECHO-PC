@@ -7,8 +7,8 @@ const main=fs.readFileSync('main.js','utf8');
 const renderer=fs.readFileSync('src/renderer.js','utf8');
 function sha(path){return crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex');}
 
-test('V26 Search lyrics checking uses bounded parallel workers instead of two-at-a-time probing',()=>{
-  assert.match(renderer,/const workerCount = Math\.min\(5, Math\.max\(1, queue\.length\)\)/);
+test('V27 Search lyrics checking uses two safe parallel workers to protect playback',()=>{
+  assert.match(renderer,/const workerCount = Math\.min\(2, Math\.max\(1, queue\.length\)\)/);
   assert.match(renderer,/Promise\.all\(Array\.from\(\{ length: workerCount \}, \(\) => worker\(\)\)\)/);
 });
 
@@ -23,7 +23,7 @@ test('V26 exact-video support checks deduplicate work and warm a ready-lyrics ho
 
 test('V26 non-lyrical support verification overlaps provider work with caption discovery',()=>{
   assert.match(main,/const providerPromise=lyricalHint\(song\)\?Promise\.resolve\(null\):getLyrics\(song\)\.catch\(\(\)=>null\)/);
-  assert.match(main,/const youtube=await getYouTubeLyrics/);
+  assert.match(main,/const youtube=await runWithYtDlpContext[\s\S]{0,240}getYouTubeLyrics/);
   assert.match(main,/const provider=await providerPromise/);
 });
 

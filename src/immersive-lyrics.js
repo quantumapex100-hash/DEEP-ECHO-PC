@@ -1,4 +1,5 @@
 const root=document.getElementById('immersiveLyricsRoot');
+// Legacy V22 state marker: immersive-language-sub pronunciation is now replacement-mode text, not a second visible line.
 const linesEl=document.getElementById('immersiveLyricsLines');
 const scroller=document.getElementById('immersiveLyricsScroller');
 const songEl=document.getElementById('immersiveLyricsSong');
@@ -97,10 +98,19 @@ function findActive(lines,t){
 function estimatedTime(){return clock.playing?Math.max(0,clock.baseTime+((performance.now()-clock.basePerf)/1000)*clock.rate):Math.max(0,clock.baseTime)}
 function buildLines(){
   activeIndex=-2;
+  root?.classList.toggle('pronunciation-on',pronunciationEnabled);
+  root?.classList.toggle('translation-on',translationEnabled&&!pronunciationEnabled);
   if(timeline.length){
-    linesEl.innerHTML=timeline.map((line,i)=>{const subs=[];if(pronunciationEnabled&&romanizedLines[i]?.text)subs.push(`<span class="immersive-language-sub pronunciation">${escapeHtml(romanizedLines[i].text)}</span>`);if(translationEnabled&&translatedLines[i]?.text)subs.push(`<span class="immersive-language-sub translation">${escapeHtml(translatedLines[i].text)}</span>`);return `<p class="immersive-lyric-line" data-line="${i}"><span class="immersive-main-line">${escapeHtml(line.text)||'♪'}</span>${subs.join('')}</p>`;}).join('');
+    linesEl.innerHTML=timeline.map((line,i)=>{
+      const roman=pronunciationEnabled?String(romanizedLines[i]?.text||''):'';
+      const main=roman||line.text||'♪';
+      const subs=[];
+      if(!pronunciationEnabled&&translationEnabled&&translatedLines[i]?.text)subs.push(`<span class="immersive-language-sub translation">${escapeHtml(translatedLines[i].text)}</span>`);
+      return `<p class="immersive-lyric-line" data-line="${i}"><span class="immersive-main-line">${escapeHtml(main)||'♪'}</span>${subs.join('')}</p>`;
+    }).join('');
   }else if(plainLines.length){
-    linesEl.innerHTML=plainLines.map(text=>`<p class="immersive-plain-line">${escapeHtml(text)||'&nbsp;'}</p>`).join('');
+    const source=pronunciationEnabled&&romanizedLines.length?romanizedLines.map(x=>String(x?.text||'').trim()).filter(Boolean):plainLines;
+    linesEl.innerHTML=source.map(text=>`<p class="immersive-plain-line">${escapeHtml(text)||'&nbsp;'}</p>`).join('');
   }else{
     linesEl.innerHTML='<p class="immersive-lyrics-placeholder">Play a song to see synced lyrics here.</p>';
   }
@@ -160,6 +170,8 @@ window.echoAPI?.onImmersiveLyricsState?.((state={})=>{
   if(Array.isArray(state.translatedLines)){translatedLines=state.translatedLines.map(x=>({time:Number(x?.time)||0,text:String(x?.text||'')}));languageChanged=true;}
   if(typeof state.pronunciationEnabled==='boolean'&&pronunciationEnabled!==state.pronunciationEnabled){pronunciationEnabled=state.pronunciationEnabled;languageChanged=true;}
   if(typeof state.translationEnabled==='boolean'&&translationEnabled!==state.translationEnabled){translationEnabled=state.translationEnabled;languageChanged=true;}
+  root?.classList.toggle('pronunciation-on',pronunciationEnabled);
+  root?.classList.toggle('translation-on',translationEnabled&&!pronunciationEnabled);
   if(Array.isArray(state.lines)){timeline=normalize(state.lines);plainLines=[];buildLines()}
   else if(!timeline.length&&Array.isArray(state.plainLines)){plainLines=state.plainLines.map(x=>String(x||'').trim()).filter(Boolean);buildLines()}
   else if(languageChanged&&timeline.length)buildLines();

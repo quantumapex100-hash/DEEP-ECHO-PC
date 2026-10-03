@@ -1,28 +1,12 @@
-# DEEP-ECHO
+# DEEP-ECHO 2.6.2 — FINAL RELEASE SOURCE
 
-DEEP-ECHO is a Windows desktop music player with immersive themes, synchronized lyrics, downloads, visualizers, mini-player/floating lyrics, smart recommendations, playlists, and in-app updates.
+This is the official 2.6.2 Windows release source built from the accepted V33 Instant Play test line.
 
-## Current release
+## Local test
+1. Run `INSTALL.bat` once in a fresh extracted folder.
+2. Run `START-OFFLINE.bat`.
 
-**DEEP-ECHO 2.6.1 · official release source**
+## Official GitHub release
+Run `RELEASE-2.6.2.bat` once. It installs exact dependencies, runs the full test suite, pushes the final source to `main`, creates tag `v2.6.2`, and triggers the GitHub Actions Windows build/publish workflow.
 
-This release is built from the accepted V26 clean source. It keeps the current lyrics sync/alignment behavior unchanged while shipping faster Search lyrics verification, faster verified-lyrics startup, steadier Word-by-Word rendering, smarter recommendations/themes, and improved playlist resolution.
-
-## Development
-
-```bat
-npm install
-npm start
-```
-
-## Tests
-
-```bat
-npm test
-```
-
-## Windows release
-
-Run `RELEASE-2.6.1.bat` for the guarded one-click release workflow, or `CLOUD-RELEASE.bat` which calls the same script.
-
-Do not commit passwords, tokens, or private credentials.
+Do not run the release BAT a second time while the workflow is already running.

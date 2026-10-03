@@ -30,7 +30,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><div class="brand-text">DEEP-ECHO</div></div>
-    <div class="v228-test-label">2.6.1</div>
+    <div class="v228-test-label">2.6.2</div>
 
     <nav class="side-nav">
       <button class="nav-item active" data-tab="home">Home</button>
@@ -125,6 +125,17 @@
           <div class="recent-search-wrap">
             <div id="recentSearches" class="recent-searches" aria-label="Recent searches"></div>
             <button id="clearRecentSearchesBtn" class="recent-search-clear hidden" type="button">Clear All</button>
+          </div>
+        </div>
+        <div id="searchProgressPanel" class="search-progress-panel hidden" aria-live="polite">
+          <div class="search-progress-copy">
+            <strong id="searchProgressLabel">Searching…</strong>
+            <span id="searchProgressPercent">0%</span>
+          </div>
+          <div class="search-progress-track" aria-hidden="true"><i id="searchProgressFill"></i></div>
+          <div id="searchOfflineState" class="search-offline-state hidden">
+            <div><strong>You're Offline</strong><span>Search needs an internet connection.</span></div>
+            <button id="searchGoDownloadsBtn" class="secondary-btn primary-outline" type="button">Go to Downloads</button>
           </div>
         </div>
         <div id="resultsList" class="song-list"></div>

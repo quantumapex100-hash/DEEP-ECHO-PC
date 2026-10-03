@@ -240,3 +240,14 @@ body[data-theme="light"] .floating-progress-track::after{
   mask-image:radial-gradient(ellipse at center,#000 0 28%,rgba(0,0,0,.82) 48%,rgba(0,0,0,.34) 68%,transparent 88%)!important;
   -webkit-mask-image:radial-gradient(ellipse at center,#000 0 28%,rgba(0,0,0,.82) 48%,rgba(0,0,0,.34) 68%,transparent 88%)!important;
 }
+
+/* V31: free-form pronunciation/text presentation. The overlay window may retain its glass shell;
+   the lyric glyphs/animation themselves never get a rectangular plate. */
+.floating-current,.floating-main-line,.floating-language-sub{
+  background-color:transparent!important;
+  border:none!important;
+  box-shadow:none!important;
+  outline:none!important;
+}
+.floating-current::before{border:none!important;box-shadow:none!important;border-radius:50%!important;left:-4%!important;right:-4%!important;mask-image:radial-gradient(ellipse at center,#000 0 34%,rgba(0,0,0,.72) 58%,transparent 84%)!important;-webkit-mask-image:radial-gradient(ellipse at center,#000 0 34%,rgba(0,0,0,.72) 58%,transparent 84%)!important}
+.floating-root.pronunciation-on .floating-language-sub.pronunciation{display:none!important}

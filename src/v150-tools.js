@@ -713,11 +713,13 @@
     const current = currentIndex >= 0 ? lyricLines[currentIndex]?.text || '' : '';
     const next = currentIndex >= 0 ? lyricLines[currentIndex + 1]?.text || '' : (lyricLines[0]?.text || '');
     const languageSurface = window.__deepechoV18GetLanguageOverlayPayload?.() || {};
+    const romanCurrent = languageSurface.pronunciationEnabled && currentIndex >= 0 ? String(languageSurface.romanizedLines?.[currentIndex]?.text || '') : '';
+    const romanNext = languageSurface.pronunciationEnabled ? String(languageSurface.romanizedLines?.[currentIndex >= 0 ? currentIndex + 1 : 0]?.text || '') : '';
     const languageSig = `${languageSurface.pronunciationEnabled?'p1':'p0'}:${languageSurface.translationEnabled?'t1':'t0'}:${languageSurface.targetLanguage||''}:${languageSurface.romanizedLines?.length||0}:${languageSurface.translatedLines?.length||0}`;
     const signature = `${currentSong?.id || ''}:${lyricLines.length}:${lyricLines[0]?.time ?? ''}:${lyricLines.at(-1)?.time ?? ''}:${lyricLines[0]?.text ?? ''}:${lyricLines.at(-1)?.text ?? ''}:${plain.length}:${plain[0]?.textContent ?? ''}:${plain.at(-1)?.textContent ?? ''}:${languageSig}`;
     const payload = {
-      title:currentSong?.title || '', artist:currentSong?.channel || '', current:current || plain[0]?.textContent || '',
-      next:next || plain[1]?.textContent || '', fallback:currentSong ? 'Lyrics syncing…' : 'Play a song to see lyrics.',
+      title:currentSong?.title || '', artist:currentSong?.channel || '', current:romanCurrent || current || plain[0]?.textContent || '',
+      next:romanNext || next || plain[1]?.textContent || '', fallback:currentSong ? 'Lyrics syncing…' : 'Play a song to see lyrics.',
       playbackTime, duration:Number(audioPlayer.duration || 0), sentAt:Date.now(), playing:!!audioPlayer.src && !audioPlayer.paused && !audioPlayer.ended, playbackRate:Number(audioPlayer.playbackRate || 1),
       theme:document.body.dataset.theme || 'golden', fontScale:(Number(localStorage.getItem(STORAGE.lyricsFontSize) || 100) / 100) || 1,
       pronunciationEnabled:!!languageSurface.pronunciationEnabled, translationEnabled:!!languageSurface.translationEnabled, targetLanguage:languageSurface.targetLanguage||''

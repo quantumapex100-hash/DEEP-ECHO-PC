@@ -1,4 +1,5 @@
 const songEl = document.getElementById('floatingSong');
+// Legacy V22 state marker: floating-language-sub pronunciation is now replacement-mode text, not a second visible line.
 const curEl = document.getElementById('floatingCurrent');
 const nextEl = document.getElementById('floatingNextLine');
 const root = document.getElementById('floatingRoot');
@@ -239,10 +240,12 @@ function languageLineAt(lines,index){
   return '';
 }
 function paintFloatingCurrent(main,index){
+  const roman=pronunciationEnabled?languageLineAt(romanizedLines,index):'';
+  const displayMain=roman||main||'♪';
   const subs=[];
-  if(pronunciationEnabled){const text=languageLineAt(romanizedLines,index);if(text)subs.push(`<span class="floating-language-sub pronunciation">${escapeFloating(text)}</span>`);}
-  if(translationEnabled){const text=languageLineAt(translatedLines,index);if(text)subs.push(`<span class="floating-language-sub translation">${escapeFloating(text)}</span>`);}
-  curEl.innerHTML=`<span class="floating-main-line">${escapeFloating(main||'♪')}</span>${subs.join('')}`;
+  // Pronunciation replaces the source-script line; it never renders as an overlapping subtitle.
+  if(!pronunciationEnabled&&translationEnabled){const text=languageLineAt(translatedLines,index);if(text)subs.push(`<span class="floating-language-sub translation">${escapeFloating(text)}</span>`);}
+  curEl.innerHTML=`<span class="floating-main-line">${escapeFloating(displayMain)}</span>${subs.join('')}`;
 }
 
 function renderSyncedLyrics() {
@@ -255,7 +258,9 @@ function renderSyncedLyrics() {
   const index = floatingActiveIndex(syncedLines, t);
   const main=index >= 0 ? (syncedLines[index]?.text || '♪') : (fallbackState.current || syncedLines[0]?.text || 'Lyrics syncing…');
   paintFloatingCurrent(main,index >= 0 ? index : 0);
-  nextEl.textContent = index >= 0 ? (syncedLines[index + 1]?.text || '') : (syncedLines[1]?.text || '');
+  const nextIndex=index>=0?index+1:1;
+  const romanNext=pronunciationEnabled?languageLineAt(romanizedLines,nextIndex):'';
+  nextEl.textContent = romanNext || (index >= 0 ? (syncedLines[index + 1]?.text || '') : (syncedLines[1]?.text || ''));
 }
 
 function renderFloatingProgress() {
