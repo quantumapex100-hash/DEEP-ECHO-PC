@@ -51,5 +51,5 @@ test('Ctrl+K command palette supports navigation playback themes and dynamic pla
   assert.match(html,/id="commandPalette"/); assert.match(js,/Command Palette|smartOpenCommandPalette/); assert.match(js,/event\.ctrlKey\|\|event\.metaKey/); assert.match(js,/Play “\$\{term\}”/);
 });
 test('YouTube stream quality is passed from renderer to main process',()=>{
-  assert.match(js,/streamSong\(normalizeSong\(song\), requestId, window\.__dinechoAudioQuality/); assert.match(preload,/streamSong: \(song, requestId, quality\)/); assert.match(main,/resolveStreamUrl\(song, quality\)/);
+  assert.match(js,/streamSong\(normalizeSong\(song\), requestId, window\.__dinechoAudioQuality/); assert.match(preload,/streamSong: \(song, requestId, quality\)/); assert.match(main,/resolveStreamUrl\(song, quality(?:, \{ kind:'playback' \})?\)/);
 });

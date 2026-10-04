@@ -411,7 +411,9 @@ function createWindow(useSplash = false) {
   if (useSplash) {
     const started = Date.now();
     mainWindow.once('ready-to-show', () => {
-      const wait = Math.max(0, 1350 - (Date.now() - started));
+      // Startup is already visually covered by the splash. Keep only a tiny anti-flash hold
+      // instead of forcing every launch to wait 1.35 s after the main window is ready.
+      const wait = Math.max(0, 180 - (Date.now() - started));
       setTimeout(() => {
         if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -779,8 +781,10 @@ ipcMain.handle('open-windows-graphics-settings', async () => {
 app.whenReady().then(() => {
   app.setName(APP_DISPLAY_NAME);
   ensureLibrary();
-  maybeRefreshYtDlp();
-  setTimeout(() => hydrateMissingLibraryArtwork().catch(() => {}), 3500);
+  // yt-dlp self-update and artwork hydration are maintenance work, not launch-critical work.
+  // Starting yt-dlp here used to compete with Chromium startup for CPU/disk/network.
+  setTimeout(() => maybeRefreshYtDlp().catch(() => {}), 30000);
+  setTimeout(() => hydrateMissingLibraryArtwork().catch(() => {}), 15000);
   registerReliableDefaultShortcuts();
   createSplashWindow();
   createWindow(true);
@@ -1233,16 +1237,37 @@ function sendProgress(event, channel, value) {
 // This is intentionally separate from permanent Downloads: playback can begin as soon
 // as yt-dlp resolves the media URL and Chromium receives the first audio bytes.
 const streamUrlCache = new Map();
+// V35: every in-flight audio resolver has an AbortController. A real Play click is allowed
+// to cancel stale speculative/old-song resolution immediately instead of waiting behind it.
+// Same-song warmup is never discarded: playback joins that exact promise and gets the URL
+// the moment it resolves.
 const streamJobs = new Map();
 const STREAM_URL_TTL = 8 * 60 * 1000;
 
-async function resolveStreamUrl(song, quality = 'auto') {
+function streamJobKey(song, quality = 'auto') {
   const qualityKey = ['high', 'medium', 'data'].includes(quality) ? quality : 'auto';
-  const key = song && song.id ? `${song.id}:${qualityKey}` : null;
+  return song?.id ? `${song.id}:${qualityKey}` : '';
+}
+function cancelStreamJobsExcept(keepKey = '') {
+  for (const [key, entry] of streamJobs.entries()) {
+    if (key === keepKey) continue;
+    try { entry?.controller?.abort(); } catch (_) {}
+  }
+}
+
+async function resolveStreamUrl(song, quality = 'auto', options = {}) {
+  const qualityKey = ['high', 'medium', 'data'].includes(quality) ? quality : 'auto';
+  const key = streamJobKey(song, qualityKey);
   if (!key || !song.url) throw new Error('Song URL missing.');
   const cached = streamUrlCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.url;
-  if (streamJobs.has(key)) return streamJobs.get(key);
+  const existing = streamJobs.get(key);
+  if (existing?.promise) {
+    if (options.kind !== 'prefetch') existing.kind = 'playback';
+    existing.priority = Math.max(Number(existing.priority || 0), Number(options.priority || 0));
+    return existing.promise;
+  }
+  if (existing && typeof existing.then === 'function') return existing;
   if (!fs.existsSync(YTDLP_PATH)) throw new Error('yt-dlp.exe nahi mila. Setup-YtDlp.bat pehle chalao.');
 
   // Prefer browser-friendly audio containers first. YouTube often exposes Opus/WebM
@@ -1253,13 +1278,22 @@ async function resolveStreamUrl(song, quality = 'auto') {
     : qualityKey === 'medium'
       ? 'bestaudio[ext=m4a][abr<=160]/bestaudio[acodec^=mp4a][abr<=160]/bestaudio[abr<=160]/bestaudio'
       : 'bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=webm]/bestaudio/best';
-  const job = runYtDlpSmart(
+  const controller = new AbortController();
+  if (options.signal) {
+    if (options.signal.aborted) controller.abort();
+    else options.signal.addEventListener('abort', () => controller.abort(), { once:true });
+  }
+  const kind = options.kind === 'prefetch' ? 'prefetch' : 'playback';
+  const priority = Number(options.priority || (kind === 'playback' ? 100 : 10));
+  let job;
+  job = runYtDlpSmart(
     YTDLP_PATH,
     ['--no-warnings', '--no-playlist', '-f', format, '-g', song.url],
     {
       maxBuffer: 4 * 1024 * 1024,
       timeout: 9000,
-      purpose: 'playback',
+      signal: controller.signal,
+      purpose: kind === 'prefetch' ? 'prefetch' : 'playback',
       browserAuth: readYouTubeAccess(),
       allowFallbackClients: true,
       clientOrder: ['default', 'web_embedded', 'android_vr'],
@@ -1271,8 +1305,11 @@ async function resolveStreamUrl(song, quality = 'auto') {
     if (!url) throw new Error('Playable audio URL nahi mili.');
     streamUrlCache.set(key, { url, expiresAt: Date.now() + STREAM_URL_TTL });
     return url;
-  }).finally(() => streamJobs.delete(key));
-  streamJobs.set(key, job);
+  }).finally(() => {
+    const active = streamJobs.get(key);
+    if (active?.promise === job || active === job) streamJobs.delete(key);
+  });
+  streamJobs.set(key, { promise: job, controller, kind, priority, createdAt: Date.now() });
   return job;
 }
 
@@ -1314,9 +1351,11 @@ async function prepareClassicPlaybackFile(song, progress = () => {}) {
 }
 
 ipcMain.handle('stream-song', async (event, song, requestId, quality = 'auto') => {
-  // User playback always wins over speculative Search lyric checks. Abort those yt-dlp
-  // probes before resolving audio so background capability detection cannot starve playback.
+  // User playback always wins over speculative lyric checks and stale resolver work.
   cancelLyricsSupportChecks();
+  // V35 preserves same-song warmup (join it), but aborts other Search/Next/old-song probes.
+  const requestedStreamKey = streamJobKey(song, quality);
+  cancelStreamJobsExcept(requestedStreamKey);
   const progress = value => sendProgress(event, 'stream-progress', { id: song.id, requestId, ...value });
   try {
     const already = readLibrary().find(s => s.id === song.id);
@@ -1334,10 +1373,13 @@ ipcMain.handle('stream-song', async (event, song, requestId, quality = 'auto') =
     progress({ percent: 10, status: 'Connecting' });
     progress({ percent: 35, status: 'Resolving audio' });
     try {
-      const streamUrl = await resolveStreamUrl(song, quality);
+      const streamUrl = await resolveStreamUrl(song, quality, { kind:'playback' });
       progress({ percent: 85, status: 'Audio URL ready' });
       return { success: true, song: { ...song, streamUrl } };
     } catch (directError) {
+      // A newer Play click can deliberately abort this resolver. Never turn that intentional
+      // cancellation into a huge classic-file fallback for the song the user already left.
+      if (isAbort(directError)) return { success:false, cancelled:true, errorCode:'PLAYBACK_SUPERSEDED', error:'Playback request superseded.' };
       // Restore the original DeepEcho safety path: if a direct YouTube URL cannot be
       // resolved, prepare a short-lived local audio file instead of failing playback.
       // This path is deliberately isolated from the global YouTube bot-check backoff.
@@ -1396,9 +1438,30 @@ ipcMain.handle('prefetch-song', async (_event, song, quality = 'auto') => {
   try {
     const already = readLibrary().find(s => s.id === song.id);
     if (already && fs.existsSync(already.filepath)) return { success: true, offline: true };
-    const streamUrl = await resolveStreamUrl(song, quality);
+    const requestedKey = streamJobKey(song, quality);
+    const priorityName = String(song?.prefetchPriority || 'search');
+    // V35 all-surfaces priority ladder: playback > next > pointer intent > Search > passive cards.
+    const priority = priorityName === 'next' ? 40 : priorityName === 'intent' ? 30 : priorityName === 'idle' ? 5 : 10;
+    // A user Play resolve always wins. Speculative work waits instead of stealing CPU/network.
+    const activePlayback = Array.from(streamJobs.entries()).find(([key, entry]) => key !== requestedKey && entry?.kind === 'playback');
+    if (activePlayback) return { success:false, busy:true };
+    // Keep speculative extraction single-flight. Higher-value Next/hover intent may replace a
+    // lower-value Search warmup; lower priority work simply waits for the next idle opportunity.
+    const replacedJobs = [];
+    for (const [key, entry] of streamJobs.entries()) {
+      if (key === requestedKey || entry?.kind !== 'prefetch') continue;
+      if (Number(entry.priority || 0) < priority) {
+        try { entry.controller?.abort(); } catch (_) {}
+        if (entry?.promise) replacedJobs.push(entry.promise);
+      } else {
+        return { success:false, busy:true };
+      }
+    }
+    if (replacedJobs.length) await Promise.allSettled(replacedJobs);
+    const streamUrl = await resolveStreamUrl(song, quality, { kind:'prefetch', priority });
     return { success: true, streamUrl };
   } catch (err) {
+    if (err?.name === 'AbortError' || /aborted/i.test(String(err?.message || ''))) return { success:false, cancelled:true };
     return { success: false, error: err.message };
   }
 });

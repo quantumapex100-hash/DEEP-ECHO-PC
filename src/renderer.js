@@ -155,7 +155,8 @@
 
     requestAnimationFrame(tick);
   }
-  tick();
+  // Give Chromium one lightweight shell frame before starting full-screen theme drawing.
+  setTimeout(() => requestAnimationFrame(tick), 120);
 })();
 
 // ================= Elements =================
@@ -513,14 +514,32 @@ let searchInstantWarmRunning = false;
 function searchWarmCandidate(song) {
   return !!song?.id && !song.filepath && !song.fileUrl && !song.streamUrl && !searchResultIsPlaylistLike(song);
 }
-function enqueueSearchInstantWarm(song, request = searchRequest, front = false) {
+function enqueueSearchInstantWarm(song, request = searchRequest, front = false, priorityOverride = '') {
   if (!window.echoAPI?.prefetchSong || !searchWarmCandidate(song)) return;
   const existing = smartPreparedStreamUrls?.get?.(song.id);
   if (existing && Date.now() - Number(existing.createdAt || 0) < 7 * 60 * 1000) return;
-  if (searchInstantWarmQueue.some(entry => String(entry.song?.id || '') === String(song.id))) return;
-  const entry = { song: queueSong(song), request, serial: searchInstantWarmSerial };
+  const priority = priorityOverride || (front ? 'intent' : 'search');
+  const rank = value => value === 'next' ? 40 : value === 'intent' ? 30 : value === 'search' ? 10 : 5;
+  const queuedIndex = searchInstantWarmQueue.findIndex(entry => String(entry.song?.id || '') === String(song.id));
+  if (queuedIndex >= 0) {
+    const queued = searchInstantWarmQueue[queuedIndex];
+    if (rank(priority) > rank(queued.priority)) queued.priority = priority;
+    if (front && queuedIndex > 0) {
+      searchInstantWarmQueue.splice(queuedIndex, 1);
+      searchInstantWarmQueue.unshift(queued);
+    }
+    return;
+  }
+  const entry = { song: queueSong(song), request, serial: searchInstantWarmSerial, priority };
   if (front) searchInstantWarmQueue.unshift(entry); else searchInstantWarmQueue.push(entry);
   void pumpSearchInstantWarm();
+}
+
+function warmVisibleCards(songs, count = 2) {
+  if (!Array.isArray(songs) || count <= 0) return;
+  songs.filter(searchWarmCandidate).slice(0, count).forEach(song =>
+    enqueueSearchInstantWarm(song, searchRequest, false, 'idle')
+  );
 }
 async function pumpSearchInstantWarm() {
   if (searchInstantWarmRunning) return;
@@ -533,7 +552,7 @@ async function pumpSearchInstantWarm() {
       const cached = smartPreparedStreamUrls.get(song.id);
       if (cached && Date.now() - Number(cached.createdAt || 0) < 7 * 60 * 1000) continue;
       try {
-        const res = await window.echoAPI.prefetchSong(normalizeSong(song), window.__dinechoAudioQuality || 'auto');
+        const res = await window.echoAPI.prefetchSong({ ...normalizeSong(song), prefetchPriority:entry.priority || 'search' }, window.__dinechoAudioQuality || 'auto');
         if (entry.serial !== searchInstantWarmSerial || entry.request !== searchRequest) continue;
         if (res?.success && res.streamUrl) {
           smartPreparedStreamUrls.set(song.id, { url:res.streamUrl, createdAt:Date.now(), source:'search-warm' });
@@ -553,9 +572,11 @@ function beginSearchInstantWarm(results, request) {
   searchInstantWarmQueue = [];
   if (!Array.isArray(results) || request !== searchRequest) return;
   const singles = results.filter(searchWarmCandidate);
-  // Two likely clicks only. This is intentionally much smaller than lyrics verification and
-  // strictly serial so Search can feel instant without recreating the old yt-dlp request storm.
+  // Keep the original first-two fast lane, then continue a strictly-serial rolling warmup
+  // across the next visible results. There is still only ONE yt-dlp prefetch at a time, so this
+  // improves click readiness without recreating the old request storm.
   singles.slice(0, 2).forEach(song => enqueueSearchInstantWarm(song, request, false));
+  singles.slice(2, 6).forEach(song => enqueueSearchInstantWarm(song, request, false));
 }
 
 function isPlaylistDetailContext(contextSpec) {
@@ -1327,6 +1348,8 @@ function renderCardSection(grid, hint, songs, emptyText, meta = {}) {
   hint.textContent = emptyText;
   const context = makeContext(songs, meta.type || 'home', meta.label || 'Home', meta.key || meta.type || 'home');
   songs.slice(0, 6).forEach((song) => grid.appendChild(buildSongCard(song, context)));
+  // Pre-resolve only the first visible cards at idle priority; real Search/Play can replace it.
+  warmVisibleCards(songs, 2);
 }
 
 function buildSongCard(song, contextSpec = null) {
@@ -1362,6 +1385,11 @@ function buildSongCard(song, contextSpec = null) {
   quick.append(next, queue);
 
   card.append(img, title, sub, play, quick);
+  // Home/recommendation/recent cards now get the same intent warmup used by Search rows.
+  const intentWarm = () => enqueueSearchInstantWarm(song, searchRequest, true, 'intent');
+  card.addEventListener('pointerenter', intentWarm, { passive:true });
+  play.addEventListener('focus', intentWarm);
+  play.addEventListener('pointerdown', intentWarm, { passive:true });
   const start = (e) => {
     if (e) e.stopPropagation();
     startSingleSong(song, play, contextSpec);
@@ -1409,8 +1437,12 @@ function buildSongRow(song, isLibrary, contextSpec = null) {
   playBtn.setAttribute('aria-label', 'Play ' + song.title);
   if (!isLibrary && !playlistLikeRow) {
     const intentWarm = () => enqueueSearchInstantWarm(song, searchRequest, true);
+    // Warm on the whole row, not only the tiny Play button. Cursor travel across a result now
+    // becomes useful resolver time before the click lands.
+    row.addEventListener('pointerenter', intentWarm, { passive:true });
     playBtn.addEventListener('pointerenter', intentWarm, { passive:true });
     playBtn.addEventListener('focus', intentWarm);
+    playBtn.addEventListener('pointerdown', intentWarm, { passive:true });
   }
   playBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
@@ -1668,7 +1700,10 @@ async function playSongObject(song, button, source = 'context', { recordHistory:
     currentPlaybackSource = source;
     if (shouldRecord && (beforeId !== item.id || historyIndex < 0)) recordPlayback(currentSong);
   }
-  smartSchedulePrefetch(1250);
+  // Resolve the upcoming song almost immediately after audio starts. Game Mode keeps the
+  // conservative legacy delay to avoid competing with a newly launched game.
+  if (window.__deepecchoGameMode) smartSchedulePrefetch(1250);
+  else smartSchedulePrefetch(90);
   renderQueue();
   return started;
 }
@@ -3922,7 +3957,8 @@ function updateHomeMoment(force=false){
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateHomeMoment(false);});
 
 // ================= Startup =================
-(async function init() {
+(function init() {
+  // Phase 1: first-paint essentials only. No filesystem/network/GPU discovery waits here.
   updateHomeMoment(true);
   syncExactLyricsSettingUi();
   updateLyricsVisual(null);
@@ -3940,11 +3976,20 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateHome
   shuffleEnabled = localStorage.getItem(STORAGE.shuffle) === 'true';
   updateQueueControls(); renderQueue();
   updatePlayIcon(); syncPlayerLikeState(); syncPlayerDownloadState();
-  await loadLibrary();
   renderRecentlyPlayed();
-  renderLikedSongs();
-  renderPlaylists();
-  loadHomeContent();
+
+  // Phase 2: hydrate the library model without building the hidden Downloads DOM. If the user
+  // opens Downloads early, activateTab() still calls loadLibrary() and remains authoritative.
+  smartRunIdle(async () => {
+    try {
+      const library = await window.echoAPI.getLibrary();
+      if (Array.isArray(library)) { currentLibrary = library; registerSongs(currentLibrary); syncPlayerDownloadState(); }
+    } catch (_) {}
+  }, 140);
+
+  // Phase 3: Home feed after add-on scripts have installed their enhanced presenter. This avoids
+  // the old double fetch (legacy Home first, enhanced Home again ~260 ms later).
+  smartRunIdle(() => { try { loadHomeContent(); } catch (_) {} }, 420);
 })();
 
 // ================= Dinecho v1.4.2 Smart Immersive Player =================
@@ -4053,6 +4098,10 @@ function smartBuildResumeCard(entry) {
   const next = document.createElement('button'); next.innerHTML = icon('next'); next.title='Play next'; next.setAttribute('aria-label','Play next'); next.onclick = e => { e.stopPropagation(); addPlayNext(song); };
   const radio = document.createElement('button'); radio.innerHTML = icon('radio'); radio.title='Start radio'; radio.setAttribute('aria-label','Start radio'); radio.className = 'card-radio-btn'; radio.onclick = e => { e.stopPropagation(); startSongRadio(song); };
   quick.append(next, radio); card.append(img, title, sub, play, progress, quick);
+  const intentWarm = () => enqueueSearchInstantWarm(song, searchRequest, true, 'intent');
+  card.addEventListener('pointerenter', intentWarm, { passive:true });
+  play.addEventListener('focus', intentWarm);
+  play.addEventListener('pointerdown', intentWarm, { passive:true });
   const resume = async e => { if (e) e.stopPropagation(); smartRestoreBaseVolume(); await startSingleSong(song, play); if (currentSong?.id === song.id && Number.isFinite(entry.current)) { try { audioPlayer.currentTime = Math.min(entry.current, Math.max(0, (audioPlayer.duration || entry.duration) - 3)); syncLyrics(true); } catch (_) {} } };
   card.addEventListener('click', resume); play.addEventListener('click', resume);
   return card;
@@ -4176,6 +4225,7 @@ function renderSmartHomeRecommendations(){
   madeForYouHint.style.display=made.length?'none':'block';becauseHint.style.display=because.length?'none':'block';
   const madeCtx=makeContext(made,'made-for-you','Made For You','made-for-you');made.forEach(song=>madeForYouGrid.appendChild(buildSongCard(song,madeCtx)));
   const becauseCtx=makeContext(because,'because','Because You Listened To','because');because.forEach(song=>becauseGrid.appendChild(buildSongCard(song,becauseCtx)));
+  warmVisibleCards([made[0], because[0]].filter(Boolean), 2);
   if(becauseTitle)becauseTitle.textContent=lead?.seed?.title?`Because You Listened To “${lead.seed.title}”`:(cached.seeds?.[0]?.title?`Because You Listened To “${cached.seeds[0].title}”`:'Because You Listened To');
   const subtitle=madeForYouGrid?.closest('.home-section')?.querySelector('.section-head span');if(subtitle)subtitle.textContent='Learns from likes, repeats, completions, skips & recency';
 }
@@ -4420,7 +4470,8 @@ loadHomeContent = async function(force=false){
 audioPlayer.addEventListener('timeupdate',()=>{smartSaveProgress();});
 audioPlayer.addEventListener('ended',()=>{smartClearFinishedProgress();renderContinueListening();});
 window.addEventListener('beforeunload',smartSaveProgress);
-renderSmartHistory(); renderSmartHome();
+// Hidden History and recommendation-heavy Home cards are not first-paint work.
+smartRunIdle(() => renderSmartHome(), 240);
 
 // ===== Smart playback, gapless prefetch, audio controls, mini + immersive player =====
 const crossfadeRange = document.getElementById('crossfadeRange');
@@ -4589,21 +4640,23 @@ function smartUpcomingSongs(limit = 2) {
   return out;
 }
 prefetchNextQueued = async function() {
-  if (!window.echoAPI.prefetchSong || !gaplessToggle?.checked) return;
+  if (!window.echoAPI.prefetchSong) return;
   if (window.__deepecchoGameMode) {
     const d=Number(audioPlayer.duration||0), c=Number(audioPlayer.currentTime||0);
     if (!Number.isFinite(d) || d<=0 || d-c>24) return;
   }
+  // V35 Instant Next: URL pre-resolution is useful even when the optional Gapless toggle is off.
+  // Keep one resolver only; actual media-byte warming remains tied to Gapless to avoid waste.
   // One resolver at a time: parallel yt-dlp prefetch jobs were stealing CPU/network from playback.
   const song = smartUpcomingSongs(1).find(item => item && !item.filepath && !item.fileUrl && !item.streamUrl);
   if (!song || smartPreparedStreamUrls.has(song.id)) return;
   const serial = ++prefetchSerial;
   try {
-    const res = await window.echoAPI.prefetchSong(normalizeSong(song), window.__dinechoAudioQuality || 'auto');
+    const res = await window.echoAPI.prefetchSong({ ...normalizeSong(song), prefetchPriority:'next' }, window.__dinechoAudioQuality || 'auto');
     if (serial !== prefetchSerial) return;
     if (res?.success && res.streamUrl) {
-      smartPreparedStreamUrls.set(song.id,{url:res.streamUrl,createdAt:Date.now()});
-      smartWarmPreparedUrl(res.streamUrl);
+      smartPreparedStreamUrls.set(song.id,{url:res.streamUrl,createdAt:Date.now(),source:'instant-next'});
+      if (gaplessToggle?.checked) smartWarmPreparedUrl(res.streamUrl);
     }
   } catch (_) {}
 };
@@ -5183,8 +5236,8 @@ commandInput?.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){eve
 commandPalette?.addEventListener('click',event=>{if(event.target===commandPalette)smartCloseCommandPalette();});
 window.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();smartOpenCommandPalette();return;}if(event.key==='Escape'&&!commandPalette?.classList.contains('hidden'))smartCloseCommandPalette();});
 
-// Final v1.4 startup sync after legacy initialization has had a chance to continue.
-setTimeout(()=>{renderRecentSearches();renderSmartHome();renderSmartHistory();smartApplyEq();smartSyncMiniState();},250);
+// Final startup sync: keep controls ready, but do not rebuild hidden/history/home DOM a second time.
+setTimeout(()=>{renderRecentSearches();smartApplyEq();smartSyncMiniState();},250);
 // Recommendation search is intentionally off the startup/playback critical path.
 setTimeout(()=>smartScheduleRecommendationRefresh(0,false),3200);
 

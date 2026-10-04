@@ -90,5 +90,6 @@
     if (res && res.success === false) { try { showToast(res.error || 'Windows Graphics Settings unavailable'); } catch (_) {} }
   });
   document.querySelector('[data-tab="settings"]')?.addEventListener('click', () => setTimeout(load, 120));
-  load();
+  // app.getGPUInfo('complete') can be expensive on hybrid-GPU laptops; do not run it while the
+  // first window is opening. Settings click/Refresh remains the authoritative trigger.
 })();

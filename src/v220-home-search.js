@@ -327,6 +327,10 @@
     if (event.target.closest('#playerLikeBtn,.action-like,.card-like,.action-download,#playerDownloadBtn')) setTimeout(() => { renderHome220(); renderSearchDiscovery(); }, 180);
   });
 
-  renderHome220();
-  renderSearchDiscovery();
+  // Home may be visible on launch; render it after first paint. Search discovery is lazy and
+  // already refreshes on Search-tab/input events above.
+  const idle220 = window.requestIdleCallback
+    ? (fn, timeout=900) => window.requestIdleCallback(fn, { timeout })
+    : (fn) => setTimeout(fn, 0);
+  setTimeout(() => idle220(renderHome220, 900), 180);
 })();

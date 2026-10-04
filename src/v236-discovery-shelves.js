@@ -676,9 +676,9 @@
   shelfObserver236.observe(searchView236, { childList: true, subtree: true });
   shelfObserver236.observe(playlistsView236, { childList: true, subtree: true });
 
+  // Create lightweight containers now; expensive data/card rendering is event-driven. The main
+  // renderer schedules the single Home hydration after this enhanced presenter is installed.
   ensureSearchLanding236();
   ensurePlaylistRecommendations236();
-  enhanceShelves236();
-  setTimeout(() => enhancedHomeLoad236(false), 260);
-  setTimeout(() => { renderSearchLanding236(); renderPlaylistRecommendations236(); enhanceShelves236(); }, 620);
+  setTimeout(() => enhanceShelves236(), 520);
 })();

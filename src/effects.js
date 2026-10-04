@@ -141,8 +141,9 @@
     }));
     fluidRipples = []; pointerTrail = []; loveHearts = []; loveMiniHearts = [];
     rgbOrbs = Array.from({ length: 18 }, (_, i) => ({ x: Math.random()*w, y: Math.random()*h, vx:(Math.random()-.5)*18, vy:(Math.random()-.5)*18, r:Math.min(w,h)*(.08+Math.random()*.12), hue:(i*37+Math.random()*60)%360, phase:Math.random()*6 }));
-    // Space assets are cached across theme switches; entering Vibrant Space no longer allocates hundreds of objects at once.
-    ensureSpaceResources(w,h);
+    // Space assets are expensive and irrelevant to every other theme. Build them only when
+    // Vibrant Space is actually active (drawSpace also guards this on first entry).
+    if (theme === 'space') ensureSpaceResources(w,h);
     spaceComets = []; nextComet = .6 + Math.random()*1.5;
     if (theme === 'love') for (let i=0;i<LOVE_HEART_TARGET;i++) loveHearts.push(makeLoveHeart(w,h,true));
     if (theme === 'blood') {
@@ -498,9 +499,13 @@
     ctx.restore();
   }
 
-  // Prepare Vibrant Space while the browser is idle, so the first theme switch has no allocation spike.
+  // Optional late prewarm: never compete with app launch. Space still initializes immediately
+  // in drawSpace if the user selects it before this maintenance window.
   const prewarmSpace = () => { try { ensureSpaceResources(Math.max(1,innerWidth),Math.max(1,innerHeight)); } catch (_) {} };
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(prewarmSpace,{timeout:1400}); else setTimeout(prewarmSpace,450);
+  setTimeout(() => {
+    if (document.hidden || (document.body?.dataset?.theme || '') === 'space') return;
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(prewarmSpace,{timeout:3500}); else setTimeout(prewarmSpace,900);
+  }, 7000);
 
   window.drawDinechoEffect = (ctx, canvas, theme) => {
     if (window.__deepecchoGameMode) return true;
