@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const state = { playing:false, current:0, duration:0, title:'Nothing playing', artist:'', thumbnail:'assets/dinecho-logo.png', theme:'golden', lyric:'', nextLyric:'', playbackRate:1 };
-const allowedThemes = new Set(['golden','light','dark','purple','toxic','blood','silver','transparent','fluids','rgb','love','space']);
+const allowedThemes = new Set(['golden','light','dark','purple','toxic','blood','silver','transparent','fluids','rgb','love','space','nebula']);
 let lyricsVisible = localStorage.getItem('deepecho-mini-lyrics-visible') !== '0';
 let clock = { baseTime:0, basePerf:performance.now(), playing:false, rate:1 };
 let seeking = false;

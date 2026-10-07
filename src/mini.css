@@ -49,3 +49,13 @@ body[data-theme="rgb"] .mini-lyrics strong{background:linear-gradient(90deg,#ff7
 @media(max-height:170px){.mini-main{padding-top:5px;padding-bottom:2px}.mini-main img{width:50px;height:50px}.mini-lyrics{padding:3px 8px 2px;margin-bottom:0}.mini-lyrics span{display:none}.mini-time{padding-bottom:3px}.mini-progress{margin-top:6px}}
 @media(max-height:150px){.mini-main{grid-template-columns:46px minmax(80px,1fr) 146px}.mini-main img{width:44px;height:44px}.mini-meta span{display:none}.mini-lyrics strong{font-size:10px}.mini-time{font-size:8px}}
 @media(prefers-reduced-motion:reduce){.mini-progress i::after,.mini-lyrics strong{animation:none!important}.mini-progress i,.mini-progress::after{transition:none!important}}
+
+/* V36 Red Nebulae mini player */
+body[data-theme="nebula"]{
+  --mini-bg:#0a0207;--mini-panel:#18050d;--mini-border:#72213a;--mini-accent:#ff4568;--mini-text:#fff5f7;--mini-muted:#e0a4b2;
+  background:
+    radial-gradient(circle at 78% 18%,rgba(255,59,89,.20),transparent 32%),
+    linear-gradient(135deg,#16040c,#070206)!important;
+}
+body[data-theme="nebula"] .mini-shell{background:linear-gradient(145deg,#19050d,#080207)!important;border-color:rgba(255,82,111,.38)!important;box-shadow:0 10px 30px rgba(0,0,0,.36),0 0 24px rgba(255,39,78,.15)!important;backdrop-filter:none!important}
+body[data-theme="nebula"] .mini-lyrics strong{color:#fff6f8!important;text-shadow:0 0 8px rgba(255,255,255,.25),0 0 19px rgba(255,54,90,.74),0 0 36px rgba(174,0,44,.24)}

@@ -1,24 +1,21 @@
-# DEEP-ECHO 2.6.3 — INSTANT PLAYBACK ALL-SURFACES OFFICIAL RELEASE SOURCE
+# DEEP-ECHO 2.6.5 — OFFICIAL WINDOWS RELEASE SOURCE
 
-DEEP-ECHO 2.6.3 promotes the accepted V35 performance line to the next official Windows release. It is built on V34 Startup Performance plus V32/V33 playback recovery/warmup behavior, and specifically targets slow Play and slow Next transitions across Search, Home and discovery surfaces.
-
-## What 2.6.3 changes
-- Real Play requests have strict priority over stale Search/Home/old-song speculative resolution.
-- If the clicked song is already being warmed, playback reuses the same resolver job instead of duplicating yt-dlp work.
-- Stale speculative resolver work is cancelled when a different song is selected.
-- Resolver priority: Playback > Next > pointer/click intent > Search warmup > passive Home-card warmup.
-- Search prepares up to six likely visible songs with controlled single-flight warmup.
-- Home, Recently Played, Made For You, Because You Listened To and Continue Listening cards receive pointer/focus intent warmup.
-- First visible Home cards can receive very-low-priority URL pre-resolution without stealing priority from actual playback.
-- Next-song URL pre-resolution begins about 90 ms after successful playback, including with Gapless OFF.
-- Gapless still controls media-byte prebuffering; URL pre-resolution is independent.
-- Downloads/local songs remain on the existing direct local playback path and bypass remote prefetch.
+This source promotes the accepted V43 line to public version **2.6.5**. It includes the Red Nebulae theme, Floating Lyrics refinements, faster previous-session resume and discovery playback warmup, plus the Search/Lyrics startup initialization hotfix.
 
 ## Protected systems
-The accepted lyrics and recommendation stack is intentionally preserved: lyrics timing/alignment, Exact Lyrics, YouTube captions, lyrics providers, Word-by-Word timing, Pronunciation, Floating Lyrics, Immersive Lyrics and Smart Autoplay. The permanent Download handler and renderer download flow are also preserved from V34.
+The accepted lyrics timing/alignment engine, Exact Lyrics, Word by Word, Pronunciation, Smart Autoplay, main-process playback resolver and permanent Downloads/local-file pipeline are preserved.
 
-## Release
-Run `RELEASE-2.6.3.bat` from a fresh extracted source folder. It runs `npm ci`, the complete automated suite, pushes the source to the configured GitHub repository, creates tag `v2.6.3`, and triggers the Windows cloud build/publish workflow. If preflight fails, it stops before tagging.
+## Test locally
+1. Run `INSTALL.bat` only for a fresh source checkout.
+2. Run `START-OFFLINE.bat`.
+3. Verify Search, lyrics, Home playback, previous-session resume, manual Next, Downloads, Floating Lyrics, Immersive Lyrics and Red Nebulae.
 
-## Local test
-Run `INSTALL.bat` once when needed, then `START-OFFLINE.bat`. Test Search → Play, Home/discovery → Play, repeated Next with Gapless OFF/ON, Downloads playback/download saving, and all lyrics surfaces before public rollout.
+## Publish 2.6.5
+Run **`RELEASE-2.6.5.bat`** from this extracted source folder. It performs `npm ci`, the complete automated suite, pushes source to `main`, creates tag `v2.6.5`, and triggers the Windows GitHub Actions build/publish workflow. If preflight fails, it stops before tagging.
+
+The workflow publishes:
+- `DEEP-ECHO-2.6.5-Setup.exe`
+- `DEEP-ECHO-2.6.5-Setup.exe.blockmap`
+- `latest.yml`
+
+Those assets keep the existing in-app updater working for older installations such as 2.6.3.

@@ -1,0 +1,259 @@
+/* DEEP-ECHO v2.6.3 V36 — Red Nebulae + startup/sync polish
+   Additive presentation only: no lyrics timing, stream resolver or download pipeline changes. */
+
+/* First-paint grace: show the theme immediately without paying blur/animation costs
+   while Electron is hydrating the initial DOM. Removed automatically after first idle paint. */
+body.deepeccho-startup-lite .sidebar,
+body.deepeccho-startup-lite .topbar,
+body.deepeccho-startup-lite .player-bar,
+body.deepeccho-startup-lite .settings-card,
+body.deepeccho-startup-lite .hero-card,
+body.deepeccho-startup-lite .modal-card,
+body.deepeccho-startup-lite .song-card,
+body.deepeccho-startup-lite .playlist-card{
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+body.deepeccho-startup-lite #particles{opacity:.18!important}
+body.deepeccho-startup-lite .immersive-theme-fx,
+body.deepeccho-startup-lite .now-playing-backdrop{animation:none!important}
+
+/* Manual lyric return control: always opaque, always clickable, and colored by the current theme.
+   Even Transparent Glass gets a solid sync pill so the player underneath cannot steal the click. */
+.lyrics-sync-float{
+  z-index:90!important;
+  pointer-events:auto!important;
+  isolation:isolate;
+  opacity:1!important;
+  background:linear-gradient(135deg,var(--panel-3),var(--panel))!important;
+  color:var(--gold-bright)!important;
+  border:1px solid color-mix(in srgb,var(--gold) 72%,var(--border))!important;
+  box-shadow:0 10px 28px rgba(0,0,0,.42),0 0 20px color-mix(in srgb,var(--gold) 22%,transparent)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+body[data-theme="light"] .lyrics-sync-float{background:linear-gradient(135deg,#f5ecdd,#fffdf8)!important}
+body[data-theme="transparent"] .lyrics-sync-float{background:linear-gradient(135deg,#1b2334,#0d1422)!important}
+
+/* ===== RED NEBULAE ===== */
+body[data-theme="nebula"]{
+  --gold:#ff385f;
+  --gold-bright:#ffe7ec;
+  --gold-dim:#ff7a95;
+  --bg:#070006;
+  --panel:#16050c;
+  --panel-2:#210711;
+  --panel-3:#310a18;
+  --border:#6f1f39;
+  --text:#fff6f8;
+  --text-dim:#e6a8b5;
+  --accent-text:#280009;
+  --shadow:rgba(255,35,83,.30);
+  --danger:#ff395d;
+  --particle-opacity:1;
+  background:
+    radial-gradient(ellipse at 73% 23%,rgba(255,54,81,.36) 0 7%,rgba(206,8,46,.19) 18%,transparent 39%),
+    radial-gradient(ellipse at 29% 66%,rgba(255,52,82,.31) 0 6%,rgba(154,0,35,.17) 22%,transparent 42%),
+    radial-gradient(ellipse at 58% 52%,rgba(255,105,118,.14),transparent 34%),
+    radial-gradient(circle at 92% 7%,rgba(255,207,207,.18),transparent 14%),
+    linear-gradient(132deg,#080006 0%,#150009 31%,#400714 55%,#110008 76%,#050005 100%)!important;
+  background-attachment:fixed!important;
+}
+body[data-theme="nebula"] #particles{filter:saturate(1.22) brightness(1.18)}
+body[data-theme="nebula"] .main-col,
+body[data-theme="nebula"] main{background:transparent}
+body[data-theme="nebula"] .sidebar{
+  background:linear-gradient(180deg,#10040b 0%,#090208 100%)!important;
+  border-right-color:rgba(255,77,108,.31);
+}
+body[data-theme="nebula"] .topbar{
+  background:linear-gradient(180deg,rgba(20,4,12,.98),rgba(12,3,9,.96))!important;
+}
+body[data-theme="nebula"] .player-bar,
+body[data-theme="nebula"] .settings-card,
+body[data-theme="nebula"] .modal-card,
+body[data-theme="nebula"] .hero-card{
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  background:linear-gradient(145deg,#19050d 0%,#0d0309 72%,#210610 100%)!important;
+  border-color:rgba(255,76,108,.34)!important;
+  box-shadow:inset 0 0 28px rgba(255,63,91,.035),0 12px 34px rgba(0,0,0,.33)!important;
+}
+body[data-theme="nebula"] .song-card,
+body[data-theme="nebula"] .playlist-card,
+body[data-theme="nebula"] .song-row{
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+body[data-theme="nebula"] .song-card,
+body[data-theme="nebula"] .playlist-card{
+  background:linear-gradient(145deg,#17050c,#0d0308)!important;
+  border-color:rgba(255,74,105,.22)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.24),inset 0 0 20px rgba(255,53,84,.025)!important;
+}
+body[data-theme="nebula"] .song-card:hover,
+body[data-theme="nebula"] .playlist-card:hover,
+body[data-theme="nebula"] .song-row:hover{
+  background:#220711!important;
+  border-color:rgba(255,94,120,.40)!important;
+}
+body[data-theme="nebula"] .hero-card{
+  background:
+    radial-gradient(circle at 78% 30%,rgba(255,68,92,.21),transparent 34%),
+    radial-gradient(circle at 25% 84%,rgba(189,0,44,.16),transparent 38%),
+    linear-gradient(145deg,#18050c,#0b0207)!important;
+}
+body[data-theme="nebula"] .nav-item.active{
+  background:linear-gradient(90deg,rgba(255,54,88,.22),rgba(122,0,33,.08),transparent)!important;
+  box-shadow:inset 0 0 0 1px rgba(255,91,120,.34),0 0 20px rgba(255,38,76,.10)!important;
+}
+body[data-theme="nebula"] .search-box input{
+  background:#10040a!important;
+  border-color:rgba(255,77,106,.32)!important;
+}
+body[data-theme="nebula"] .search-box input:focus{
+  border-color:#ff5475!important;
+  box-shadow:0 0 0 1px rgba(255,75,106,.18),0 0 23px rgba(255,26,70,.21)!important;
+}
+body[data-theme="nebula"] .search-box button,
+body[data-theme="nebula"] .hero-btn{
+  background:linear-gradient(180deg,#fff2f4,#ff4e70)!important;
+  border-color:#ff7791!important;
+  color:#300009!important;
+  box-shadow:0 0 22px rgba(255,55,91,.24);
+}
+body[data-theme="nebula"] .brand-text,
+body[data-theme="nebula"] .greet{
+  color:#fff2f5!important;
+  text-shadow:0 0 10px rgba(255,235,239,.18),0 0 24px rgba(255,37,79,.34);
+}
+
+/* Theme preview: procedural, no DineEcho/Cho text from the reference image. */
+.nebula-preview{
+  position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 72% 28%,#fff 0 1px,transparent 2px),
+    radial-gradient(circle at 36% 68%,rgba(255,226,229,.92) 0 1px,transparent 2px),
+    radial-gradient(ellipse at 68% 30%,rgba(255,81,98,.88),rgba(184,0,40,.40) 20%,transparent 50%),
+    radial-gradient(ellipse at 28% 74%,rgba(255,50,82,.75),rgba(120,0,31,.30) 23%,transparent 52%),
+    linear-gradient(135deg,#070006,#460812 52%,#100008)!important;
+}
+.nebula-preview::before{
+  content:"";position:absolute;inset:-15%;
+  background:
+    repeating-radial-gradient(circle at 55% 51%,rgba(255,211,217,.82) 0 1px,transparent 1.7px 13px),
+    radial-gradient(circle at 55% 51%,transparent 0 17%,rgba(255,65,91,.45) 18% 20%,transparent 22% 29%,rgba(255,65,91,.25) 30% 31%,transparent 33%);
+  animation:nebulaPreviewOrbit 12s linear infinite;
+}
+.nebula-preview i{position:absolute;height:1px;width:48%;left:28%;top:48%;transform-origin:left center;background:linear-gradient(90deg,transparent,#ffe8eb,#ff4e71);box-shadow:0 0 7px #ff4669;opacity:.75}
+.nebula-preview i:nth-child(1){transform:rotate(-26deg)}
+.nebula-preview i:nth-child(2){transform:rotate(18deg);top:58%}
+.nebula-preview i:nth-child(3){transform:rotate(-5deg);top:35%;opacity:.45}
+@keyframes nebulaPreviewOrbit{to{transform:rotate(360deg)}}
+
+/* Main lyrics: free text, no rectangular active plate. */
+body.lyrics-theme-fx[data-theme="nebula"] #lyricsView .lyric-line,
+body.lyrics-theme-fx[data-theme="nebula"] .immersive-lyrics-body .lyric-line{background:none!important}
+body[data-theme="nebula"] #lyricsView .lyric-line.current,
+body[data-theme="nebula"] .immersive-lyrics-body .lyric-line.current{
+  color:#fff5f7!important;
+  text-shadow:0 0 9px rgba(255,245,247,.30),0 0 20px rgba(255,63,96,.72),0 0 44px rgba(202,0,48,.32)!important;
+  filter:brightness(1.12) saturate(1.08);
+  animation:nebulaLyricPulse 1.65s ease-in-out infinite alternate!important;
+  background:none!important;
+  box-shadow:none!important;
+}
+body[data-theme="nebula"] #lyricsView .lyric-line.current::after,
+body[data-theme="nebula"] .immersive-lyrics-body .lyric-line.current::after{background:none!important}
+@keyframes nebulaLyricPulse{
+  from{transform:translateY(0) scale(1);text-shadow:0 0 9px rgba(255,245,247,.24),0 0 18px rgba(255,49,83,.58),0 0 36px rgba(183,0,43,.22)}
+  to{transform:translateY(-1px) scale(1.012);text-shadow:0 0 12px rgba(255,245,247,.34),0 0 27px rgba(255,67,98,.84),0 0 54px rgba(217,0,51,.30)}
+}
+body[data-theme="nebula"] #lyricsVisualizerCanvas{
+  filter:brightness(1.18) contrast(1.18) saturate(1.28) drop-shadow(0 0 25px rgba(255,52,87,.66)) drop-shadow(0 0 62px rgba(159,0,44,.28))!important;
+}
+
+/* Opaque sync pill gets a dedicated bright nebula identity. */
+body[data-theme="nebula"] .lyrics-sync-float{
+  background:linear-gradient(135deg,#390915,#16040c)!important;
+  border-color:#ff6a87!important;
+  color:#fff5f7!important;
+  box-shadow:0 9px 26px rgba(0,0,0,.46),0 0 24px rgba(255,47,83,.34)!important;
+}
+
+/* In-app immersive player */
+body[data-theme="nebula"] .immersive-player{
+  --immersive-accent:#ff385f;
+  --immersive-bright:#fff0f3;
+  --immersive-dim:#b71d43;
+  background:#050004!important;
+}
+body[data-theme="nebula"] .immersive-backdrop{
+  opacity:.26!important;
+  filter:blur(44px) saturate(1.35) brightness(.42)!important;
+}
+body[data-theme="nebula"] .immersive-theme-fx{
+  inset:-8%;opacity:1!important;filter:none!important;
+  background:
+    radial-gradient(circle at 18% 68%,rgba(255,31,71,.23),transparent 28%),
+    radial-gradient(circle at 66% 36%,rgba(255,82,99,.19),transparent 34%),
+    radial-gradient(circle at 84% 15%,rgba(185,0,49,.23),transparent 26%),
+    radial-gradient(circle,#fff 0 1px,transparent 1.3px) 0 0/49px 49px,
+    radial-gradient(circle,#ff8198 0 1px,transparent 1.4px) 19px 31px/73px 73px;
+  animation:nebulaImmersiveDrift 22s linear infinite!important;
+}
+@keyframes nebulaImmersiveDrift{0%{transform:translate3d(-1.2%,0,0) scale(1.02)}50%{transform:translate3d(1.1%,-.7%,0) scale(1.035)}100%{transform:translate3d(-1.2%,0,0) scale(1.02)}}
+body[data-theme="nebula"] .immersive-lyrics-panel{
+  background:linear-gradient(145deg,rgba(24,5,13,.96),rgba(8,2,7,.97))!important;
+  border-color:rgba(255,77,108,.35)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  box-shadow:0 24px 80px rgba(0,0,0,.42),0 0 46px rgba(255,38,76,.12)!important;
+}
+body[data-theme="nebula"] .immersive-progress-track>i{
+  background:linear-gradient(90deg,#ff244f,#ff6b82,#fff1f3,#ff4667,#b90038)!important;
+  background-size:220% 100%;
+  animation:nebulaProgressFlow 2.35s linear infinite;
+}
+@keyframes nebulaProgressFlow{to{background-position:220% 0}}
+body[data-theme="nebula"] .immersive-progress-track>i::after{
+  background:#fff3f5!important;
+  box-shadow:0 0 10px #fff,0 0 24px #ff3a61!important;
+}
+
+/* Like burst + live cursor */
+.theme-like-burst[data-theme="nebula"]{--like-color:#ff4f72}
+.theme-like-burst[data-theme="nebula"] .theme-like-core{border-color:#fff0f3;box-shadow:0 0 18px rgba(255,245,247,.65),0 0 36px rgba(255,40,78,.52)}
+.theme-like-burst[data-theme="nebula"] .theme-like-particle{color:#ff7790;text-shadow:0 0 10px #ff315b,0 0 20px #a90031}
+.dinecho-live-cursor[data-theme="nebula"]{color:#ff3d63}
+.dinecho-live-cursor[data-theme="nebula"] .cursor-live-streak{stroke:#fff0f3;filter:drop-shadow(0 0 2px #ff3158)}
+
+/* Keep expensive blur out of this live theme; brightness comes from gradients/canvas glow instead. */
+body[data-theme="nebula"] .search220-autocomplete,
+body[data-theme="nebula"] .search220-discovery,
+body[data-theme="nebula"] .search236-landing-hero,
+body[data-theme="nebula"] .playlist236-recommendations,
+body[data-theme="nebula"] .v2314-stat-card,
+body[data-theme="nebula"] .v2314-stats-panel,
+body[data-theme="nebula"] .v2314-session-card{
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  background:linear-gradient(145deg,#17050c,#0b0207)!important;
+}
+
+@media (prefers-reduced-motion:reduce){
+  .nebula-preview::before,
+  body[data-theme="nebula"] .immersive-theme-fx,
+  body[data-theme="nebula"] #lyricsView .lyric-line.current,
+  body[data-theme="nebula"] .immersive-lyrics-body .lyric-line.current,
+  body[data-theme="nebula"] .immersive-progress-track>i{animation:none!important}
+}
+
+/* Setup/theme preview also gets Red Nebulae's identity without using the reference artwork itself. */
+.deep-preview-stage[data-theme="nebula"]{
+  background:
+    radial-gradient(circle at 72% 27%,rgba(255,238,241,.88) 0 1px,transparent 2px),
+    radial-gradient(ellipse at 68% 34%,rgba(255,76,98,.72),rgba(171,0,40,.26) 22%,transparent 54%),
+    radial-gradient(ellipse at 26% 75%,rgba(255,42,78,.60),rgba(115,0,31,.22) 25%,transparent 56%),
+    linear-gradient(135deg,#070006,#4a0915 52%,#0d0008)!important;
+}

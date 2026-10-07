@@ -251,3 +251,104 @@ body[data-theme="light"] .floating-progress-track::after{
 }
 .floating-current::before{border:none!important;box-shadow:none!important;border-radius:50%!important;left:-4%!important;right:-4%!important;mask-image:radial-gradient(ellipse at center,#000 0 34%,rgba(0,0,0,.72) 58%,transparent 84%)!important;-webkit-mask-image:radial-gradient(ellipse at center,#000 0 34%,rgba(0,0,0,.72) 58%,transparent 84%)!important}
 .floating-root.pronunciation-on .floating-language-sub.pronunciation{display:none!important}
+
+/* V36 Red Nebulae floating lyrics — opaque, bright, low-blur. */
+body[data-theme="nebula"] .floating-root{
+  --fl-accent:#ff4568;--fl-text:#fff5f7;
+  background:
+    radial-gradient(circle at 78% 20%,rgba(255,66,91,.18),transparent 32%),
+    linear-gradient(135deg,#19050d,#090207 74%)!important;
+  border-color:rgba(255,91,119,.52)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  box-shadow:0 10px 32px rgba(0,0,0,.38),0 0 25px rgba(255,37,77,.18)!important;
+}
+body[data-theme="nebula"] .floating-root::before{
+  background:
+    radial-gradient(circle,rgba(255,247,249,.72) 0 1px,transparent 1.4px) 0 0/43px 43px,
+    linear-gradient(115deg,transparent 38%,rgba(255,67,98,.11) 49%,transparent 60%)!important;
+  animation:flNebulaSweep 9s ease-in-out infinite!important;
+}
+body[data-theme="nebula"] .floating-current{
+  font-family:"Segoe UI Variable Display","Nirmala UI",sans-serif;
+  color:#fff7f8!important;
+  text-shadow:0 0 8px rgba(255,255,255,.30),0 0 19px rgba(255,55,91,.82),0 0 38px rgba(173,0,44,.30)!important;
+  animation:flNebulaPulse 1.55s ease-in-out infinite alternate;
+}
+body[data-theme="nebula"] .floating-next{color:#ffc4cf;opacity:.58}
+body[data-theme="nebula"] .floating-actions button{background:#220711;border-color:rgba(255,87,115,.22)}
+@keyframes flNebulaPulse{from{transform:translateY(0) scale(1)}to{transform:translateY(-1px) scale(1.012);filter:brightness(1.12)}}
+@keyframes flNebulaSweep{0%,24%{transform:translateX(-28%)}65%,100%{transform:translateX(28%)}}
+
+/* ===== DEEP-ECHO V40: open floating lyric stage =====
+   Presentation-only polish for every theme. Keeps lyric timestamps, seeking and audio graph logic untouched. */
+.floating-root{
+  --fl-v40-rise:clamp(2px,calc(4px * var(--fl-overlay-scale,1)),7px);
+  border-color:color-mix(in srgb,var(--fl-accent) 36%,transparent);
+  box-shadow:0 9px 26px rgba(0,0,0,.25),0 0 20px color-mix(in srgb,var(--fl-accent) 10%,transparent);
+}
+.floating-current{
+  /* About 12% smaller than V39 so the active line stays strong without dominating the overlay. */
+  font-size:clamp(13px,calc(22px * var(--fl-overlay-scale) * var(--fl-user-font-scale)),44px)!important;
+  margin-top:clamp(2px,calc(4px * var(--fl-overlay-scale)),8px)!important;
+  overflow:visible!important;
+}
+.floating-main-line{
+  transform-origin:50% 58%;
+  will-change:transform,filter;
+  animation:flV40FreeCurrent 4.2s ease-in-out infinite alternate;
+}
+.floating-next{
+  /* Lift upcoming lyrics away from the seek/progress rail on every theme. */
+  margin-top:0!important;
+  transform:translate3d(0,calc(-1 * var(--fl-v40-rise)),0);
+  font-size:clamp(10px,calc(13px * var(--fl-overlay-scale) * var(--fl-user-font-scale)),25px)!important;
+  line-height:1.08;
+  will-change:transform,opacity,filter;
+  animation:flV40FreeNext 4.8s ease-in-out infinite alternate;
+}
+.floating-root.compact .floating-current{
+  font-size:clamp(12px,calc(18.5px * var(--fl-overlay-scale) * var(--fl-user-font-scale)),37px)!important;
+}
+.floating-root.compact .floating-next{transform:translate3d(0,calc(-.6 * var(--fl-v40-rise)),0)}
+.floating-current::before{
+  /* A wider feathered halo makes the lyric motion feel open instead of trapped inside a rectangular plate. */
+  left:-10%!important;
+  right:-10%!important;
+  top:-42px!important;
+  bottom:-42px!important;
+  mask-image:radial-gradient(ellipse at center,#000 0 25%,rgba(0,0,0,.78) 48%,rgba(0,0,0,.28) 70%,transparent 92%)!important;
+  -webkit-mask-image:radial-gradient(ellipse at center,#000 0 25%,rgba(0,0,0,.78) 48%,rgba(0,0,0,.28) 70%,transparent 92%)!important;
+}
+@keyframes flV40FreeCurrent{
+  0%{transform:translate3d(-.35px,.8px,0) scale(.995);filter:brightness(.99)}
+  50%{transform:translate3d(.35px,-1.6px,0) scale(1.006);filter:brightness(1.035)}
+  100%{transform:translate3d(-.15px,-.45px,0) scale(1.002);filter:brightness(1.015)}
+}
+@keyframes flV40FreeNext{
+  0%{opacity:.46;filter:brightness(.94)}
+  50%{opacity:.58;filter:brightness(1.03)}
+  100%{opacity:.50;filter:brightness(.98)}
+}
+
+/* Red Nebulae V40: more transparent glass without enabling expensive backdrop blur. */
+body[data-theme="nebula"] .floating-root{
+  background:
+    radial-gradient(circle at 78% 20%,rgba(255,66,91,.16),transparent 34%),
+    radial-gradient(ellipse at 24% 72%,rgba(120,0,34,.16),transparent 42%),
+    linear-gradient(135deg,rgba(25,5,13,.80),rgba(9,2,7,.64) 74%,rgba(20,2,9,.58))!important;
+  border-color:rgba(255,91,119,.42)!important;
+  box-shadow:0 9px 28px rgba(0,0,0,.31),0 0 24px rgba(255,37,77,.16)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+body[data-theme="nebula"] .floating-next{color:#ffd0d8;opacity:.55}
+body[data-theme="nebula"] .floating-current::before{opacity:calc(var(--fl-particle-alpha) * .82)!important}
+
+@media(max-height:122px){
+  .floating-current{font-size:clamp(12px,calc(19px * var(--fl-overlay-scale) * var(--fl-user-font-scale)),34px)!important}
+  .floating-next{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .floating-main-line,.floating-next{animation:none!important;transform:none!important}
+}

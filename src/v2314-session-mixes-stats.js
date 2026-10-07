@@ -74,15 +74,52 @@
     try { showToast('Saved session cleared'); } catch (_) {}
   }
 
+  let resumeWarmPromise = null;
+  function prewarmResumeSession() {
+    if (!resumeEnabled() || !window.echoAPI?.prefetchSong) return null;
+    const snap = readJson(SESSION_KEY, null);
+    if (!snap?.savedAt || Date.now() - Number(snap.savedAt) > MAX_SESSION_AGE_MS) return null;
+    const song = safeSong(snap.song);
+    if (!song?.id || song.filepath || song.fileUrl || song.streamUrl) return null;
+    try {
+      if (typeof smartPreparedStreamUrls !== 'undefined') {
+        const cached = smartPreparedStreamUrls.get(song.id);
+        if (cached && Date.now() - Number(cached.createdAt || 0) < 7 * 60 * 1000) return Promise.resolve(cached);
+      }
+    } catch (_) {}
+    if (resumeWarmPromise) return resumeWarmPromise;
+    const warmSong = (() => {
+      try { return typeof normalizeSong === 'function' ? normalizeSong(song) : { ...song }; } catch (_) { return { ...song }; }
+    })();
+    resumeWarmPromise = Promise.resolve(window.echoAPI.prefetchSong({ ...warmSong, prefetchPriority:'intent' }, window.__dinechoAudioQuality || 'auto'))
+      .then(res => {
+        if (res?.success && res.streamUrl) {
+          try {
+            if (typeof smartPreparedStreamUrls !== 'undefined') {
+              smartPreparedStreamUrls.set(song.id, { url:res.streamUrl, createdAt:Date.now(), source:'session-resume' });
+            }
+          } catch (_) {}
+        }
+        return res;
+      })
+      .catch(() => null)
+      .finally(() => { resumeWarmPromise = null; });
+    return resumeWarmPromise;
+  }
+
   async function restoreSession() {
     if (!resumeEnabled()) return;
+    // V42 starts resolving the saved remote song before the resume playback request.
+    // If the warmup is still running, the existing resolver single-flight path joins it.
+    try { prewarmResumeSession(); } catch (_) {}
     const snap = readJson(SESSION_KEY, null);
     if (!snap?.savedAt || Date.now() - Number(snap.savedAt) > MAX_SESSION_AGE_MS) return;
     // Never steal control if the user already started playback during launch.
     try { if (currentSong?.id) return; } catch (_) {}
 
-    const targetTab = String(snap.tab || 'home');
-    try { if (typeof activateTab === 'function') activateTab(targetTab); } catch (_) {}
+    // Startup always lands on Home. Session resume restores only the current song/time state;
+    // collection/tab context is intentionally not revived.
+    try { if (typeof activateTab === 'function') activateTab('home'); } catch (_) {}
 
     const song = safeSong(snap.song);
     if (!song) return;
@@ -92,14 +129,16 @@
 
     try {
       let started = false;
-      const context = snap.context;
-      if (context?.items?.length && typeof setActiveContext === 'function' && typeof playContextAt === 'function') {
-        const items = context.items.map(safeSong).filter(Boolean);
-        const idxById = items.findIndex(item => item.id && item.id === song.id);
-        const index = idxById >= 0 ? idxById : Math.max(0, Math.min(items.length - 1, Number(context.index || 0)));
-        setActiveContext({ items, type: context.type || 'collection', label: context.label || 'Collection', key: context.key || 'session' }, items[index] || song);
-        started = await playContextAt(index, null, { recordHistory:false });
-      } else if (typeof startSingleSong === 'function') {
+      // Restore only a single-song playback context and never revive the previous section/collection.
+      // Use the existing playback helper with recordHistory:false so reopening DEEP-ECHO does not
+      // create a duplicate history entry. Fall back to startSingleSong on older renderer builds.
+      if (typeof playSongObject === 'function' && typeof setActiveContext === 'function') {
+        try {
+          setActiveContext({ items:[song], type:'single', label:song.title || 'Resume', key:`resume:${song.id || song.filepath || 'song'}` }, song);
+          started = await playSongObject(song, null, 'context', { recordHistory:false });
+        } catch (_) { started = false; }
+      }
+      if (!started && typeof startSingleSong === 'function') {
         await startSingleSong(song, null);
         started = !!currentSong && (!song.id || currentSong.id === song.id);
       }
@@ -128,7 +167,7 @@
     card.innerHTML = `
       <div class="setting-title-row"><span>Resume Session</span><strong id="v2314SessionState">${resumeEnabled() ? 'ON' : 'OFF'}</strong></div>
       <label class="switch-row"><span>Resume where I left off</span><input id="v2314ResumeToggle" type="checkbox" ${resumeEnabled() ? 'checked' : ''}/></label>
-      <p class="setting-help">Restores the last section, current song, playback position and its collection context. Queue, volume and theme keep using their existing DEEP-ECHO storage.</p>
+      <p class="setting-help">Restores the current song and playback position. DEEP-ECHO always opens on Home; theme, queue and volume keep using their existing storage.</p>
       <div class="setting-inline-actions"><button id="v2314ClearSession" class="secondary-btn" type="button">Clear Saved Session</button></div>`;
     parent.appendChild(card);
     $('v2314ResumeToggle')?.addEventListener('change', event => {
@@ -437,9 +476,10 @@
     // Refresh mixes when likes/history meaningfully change without polling aggressively.
     window.addEventListener('storage', event => { if ([STORAGE?.liked, STORAGE?.playStats, STORAGE?.preferenceSignals].includes(event.key)) refreshPersonalMixes(false); });
 
-    // Wait until renderer startup/library scan settles. If the user already starts something, restoreSession safely aborts.
-    const scheduleRestore = () => setTimeout(restoreSession, 1250);
-    if (document.readyState === 'complete') scheduleRestore(); else window.addEventListener('load', scheduleRestore, { once:true });
+    // V42 fast resume: give the saved song an early resolver head-start, then restore quickly.
+    // A real user Play request still wins and restoreSession aborts when currentSong is already set.
+    setTimeout(() => { try { prewarmResumeSession(); } catch (_) {} }, 70);
+    setTimeout(() => { try { restoreSession(); } catch (_) {} }, 460);
     setInterval(() => { if (!document.hidden) { recordListeningTick(); if ($('statsView')?.classList.contains('active')) renderStats(); } }, 3000);
   }
 

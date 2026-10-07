@@ -87,7 +87,13 @@
       requestAnimationFrame(tick);
       return;
     }
-    if (theme === 'space') spaceLastRender = frameNow; else spaceLastRender = 0;
+    if (theme === 'nebula' && spaceLastRender && frameNow - spaceLastRender < 32) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    if (theme === 'space') spaceLastRender = frameNow;
+    else if (theme === 'nebula') spaceLastRender = frameNow;
+    else spaceLastRender = 0;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (window.drawDinechoEffect && window.drawDinechoEffect(ctx, canvas, theme)) {
       requestAnimationFrame(tick);
@@ -290,6 +296,10 @@ let historyIndex = -1;
 let activeContext = null;
 let currentPlaybackSource = 'none';
 const knownSongs = new Map();
+// V43 hotfix: this cache must exist before startup renders Recently Played/Home,
+// because those surfaces can immediately enqueue instant-play warmup. Keeping it
+// above init prevents the V42 temporal-dead-zone crash that broke Search/Lyrics.
+const smartPreparedStreamUrls = new Map();
 
 const STORAGE = {
   liked: 'echo-liked-songs-v1',
@@ -1322,6 +1332,8 @@ function renderRecentlyPlayed() {
   recentHint.style.display = recent.length ? 'none' : 'block';
   const context = makeContext(recent, 'recent', 'Recently Played', 'recent');
   recent.slice(0, 6).forEach((song) => recentGrid.appendChild(buildSongCard(song, context)));
+  // V42: pre-resolve the most likely Recent clicks while the user sees Home.
+  warmVisibleCards(recent, 3);
 }
 
 // ================= Home content =================
@@ -1350,6 +1362,8 @@ function renderCardSection(grid, hint, songs, emptyText, meta = {}) {
   songs.slice(0, 6).forEach((song) => grid.appendChild(buildSongCard(song, context)));
   // Pre-resolve only the first visible cards at idle priority; real Search/Play can replace it.
   warmVisibleCards(songs, 2);
+  // V42 adds a second bounded batch instead of increasing concurrency.
+  warmVisibleCards(songs.slice(2), 2);
 }
 
 function buildSongCard(song, contextSpec = null) {
@@ -2024,7 +2038,7 @@ function triggerThemeLikeAnimation(sourceEl = null) {
   const config = {
     golden:{glyph:'✦',count:16}, light:{glyph:'✧',count:11}, dark:{glyph:'◆',count:10}, purple:{glyph:'ϟ',count:13},
     toxic:{glyph:'●',count:15}, blood:{glyph:'●',count:13}, silver:{glyph:'✦',count:15}, transparent:{glyph:'○',count:10},
-    dragon:{glyph:'✦',count:20}, fluids:{glyph:'●',count:14}, rgb:{glyph:'◆',count:18}, love:{glyph:'♥',count:18}, space:{glyph:'✦',count:20}
+    dragon:{glyph:'✦',count:20}, fluids:{glyph:'●',count:14}, rgb:{glyph:'◆',count:18}, love:{glyph:'♥',count:18}, space:{glyph:'✦',count:20}, nebula:{glyph:'✦',count:22}
   }[theme] || {glyph:'♥',count:14};
   const rect = sourceEl?.getBoundingClientRect?.();
   const x = rect ? rect.left + rect.width/2 : window.innerWidth/2;
@@ -2823,7 +2837,8 @@ function getVisualizerThemeSpec(theme = document.body.dataset.theme || 'golden')
     fluids: { mode: 'fluid', accent: 'fluid', h1: 190, h2: 278, h3: 157, glow: 'rgba(75,220,255,.34)', core: 'rgba(69,210,255,.15)', ray: 'rgba(80,220,255,', speed: 1.08, rays: 136, glowGain: 1.15 },
     rgb: { mode: 'rgb', accent: 'rgb', h1: 0, h2: 360, h3: 210, glow: 'rgba(114,215,255,.34)', core: 'rgba(255,255,255,.12)', ray: 'rgba(120,220,255,', speed: 1.42, rays: 168, glowGain: 1.18 },
     love: { mode: 'love', accent: 'love', h1: 330, h2: 395, h3: 285, glow: 'rgba(255,91,183,.38)', core: 'rgba(255,126,193,.16)', ray: 'rgba(255,100,190,', speed: 1.24, rays: 148, glowGain: 1.18 },
-    space: { mode: 'space', accent: 'space', h1: 207, h2: 276, h3: 318, glow: 'rgba(84,170,255,.42)', core: 'rgba(168,111,255,.18)', ray: 'rgba(111,193,255,', speed: 1.12, rays: 156, glowGain: 1.16 }
+    space: { mode: 'space', accent: 'space', h1: 207, h2: 276, h3: 318, glow: 'rgba(84,170,255,.42)', core: 'rgba(168,111,255,.18)', ray: 'rgba(111,193,255,', speed: 1.12, rays: 156, glowGain: 1.16 },
+    nebula: { mode: 'nebula', accent: 'nebula', h1: 346, h2: 8, h3: 326, glow: 'rgba(255,42,87,.48)', core: 'rgba(255,88,111,.22)', ray: 'rgba(255,59,91,', speed: 1.16, rays: 164, glowGain: 1.22 }
   };
   return specs[theme] || specs.golden;
 }
@@ -2978,6 +2993,50 @@ function drawThemeAccent(ctx, spec, cx, cy, sphereR, audio, dpr, safeOuterR = In
       drawVisualizerHeart(ctx,x,y,size,`hsla(${hue},100%,68%,${.18+spectrum*.50+hit*.12})`,.95,a+Math.PI/2);
     }
     ctx.restore();
+  } else if (accent === 'nebula') {
+    // Red Nebulae: bright orbital rings + a horizontal reactive waveform around the sphere.
+    // Geometry stays bounded and uses the existing analyser so it remains lightweight.
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let ring = 0; ring < 4; ring++) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((-0.34 + ring * .28) + visualizerAngle * (ring % 2 ? -.18 : .14));
+      ctx.scale(1, .48 + ring * .075);
+      const rr = safeR(sphereR * (1.15 + ring * .105 + kick * .026), 18*dpr);
+      ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2);
+      const hue = 348 + ring * 7 + audio.centroid * 10;
+      ctx.strokeStyle = `hsla(${hue},100%,72%,${.055 + audio.energy*.105 + hit*.115})`;
+      ctx.lineWidth = (1 + ring*.38 + air*.8 + hit*.8) * dpr;
+      ctx.shadowColor = `hsla(${hue},100%,62%,.78)`;
+      ctx.shadowBlur = (7 + audio.energy*10 + hit*12) * dpr;
+      ctx.stroke(); ctx.restore();
+    }
+    ctx.beginPath();
+    const waveW = Math.min(safeOuterR * 1.82, sphereR * 3.0);
+    const samples = 112;
+    for (let i = 0; i <= samples; i++) {
+      const q = i / samples;
+      const x = cx + (q - .5) * waveW;
+      const wv = visualizerWaveSample((q * .92 + .04) % 1);
+      const sp = visualizerSpectrumSample(q, audio);
+      const envelope = Math.sin(q * Math.PI);
+      const y = cy + wv * envelope * (8 + body*18 + hit*20) * dpr + Math.sin((q*7+phase)*Math.PI) * sp * 3*dpr;
+      i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    }
+    ctx.strokeStyle = `rgba(255,225,231,${.13 + audio.energy*.18 + hit*.18})`;
+    ctx.lineWidth = (1.15 + audio.vocal*1.1 + hit*.8) * dpr;
+    ctx.shadowColor = 'rgba(255,55,91,.95)'; ctx.shadowBlur = (10 + hit*16) * dpr; ctx.stroke();
+    const stars = 18;
+    for (let i = 0; i < stars; i++) {
+      const q=i/stars, sp=visualizerSpectrumSample(q,audio);
+      const a=q*Math.PI*2 + visualizerAngle*(i%2?-.48:.61);
+      const rr=safeR(sphereR*(1.12+(i%3)*.07)+sp*15*dpr,16*dpr);
+      const x=cx+Math.cos(a)*rr,y=cy+Math.sin(a)*rr, z=(.9+sp*2.2+hit*1.5)*dpr;
+      ctx.fillStyle=`rgba(255,${170+(i%3)*26},${185+(i%2)*35},${.18+sp*.48+hit*.12})`;
+      ctx.shadowColor='rgba(255,67,102,.9)';ctx.shadowBlur=(6+sp*9+hit*8)*dpr;
+      ctx.fillRect(x-z/2,y-z/2,z,z);
+    }
+    ctx.restore();
   } else if (accent === 'space') {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (let ring = 0; ring < 3; ring++) {
@@ -3041,6 +3100,109 @@ function drawThemeAccent(ctx, spec, cx, cy, sphereR, audio, dpr, safeOuterR = In
       }ctx.closePath();ctx.strokeStyle=`hsla(${[spec.h1,spec.h2,spec.h3][layer]},100%,68%,${.055+audio.energy*.10+hit*.12})`;ctx.lineWidth=(4.6-layer*.9+hit*1.2)*dpr;ctx.stroke();
     }ctx.restore();
   }
+}
+
+
+// V41 Red Nebulae core: the same galaxy/spiral silhouette rebuilt entirely from audio-reactive dots.
+// V42 core palette uses Hot Pink + Soft Orange + Golden White. Outer Red Nebulae rings/wave stay unchanged.
+function drawNebulaDotCore(ctx, cx, cy, sphereR, audio, dpr, safeOuterRadius, qualityDetail = 1) {
+  if (!audio?.hasSignal) return;
+  const energy = Math.max(0, Math.min(1, Number(audio.energy || 0)));
+  const bass = Math.max(0, Math.min(1, Number(audio.bass || 0)));
+  const mid = Math.max(0, Math.min(1, Number(audio.mid || 0)));
+  const vocal = Math.max(0, Math.min(1, Number(audio.vocal || 0)));
+  const beat = Math.max(0, Math.min(1, Number(audio.beatPulse || 0)));
+  const hit = Math.max(0, Math.min(1, Number(audio.transient || 0)));
+  const air = Math.max(0, Math.min(1, (Number(audio.highMid || 0) + Number(audio.treble || 0)) * .5));
+  const phase = visualizerMusicPhase;
+  const safeR = Math.max(sphereR * .72, Math.min(safeOuterRadius || sphereR * 1.5, sphereR * 1.22));
+  const palette = [
+    [255, 62, 156],   // hot pink
+    [255, 146, 72],   // soft orange
+    [255, 240, 202]   // golden white
+  ];
+  const dot = (x, y, radius, color, alpha, glow) => {
+    const [r,g,b] = color;
+    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    ctx.shadowColor = `rgba(${r},${g},${b},${Math.min(1, alpha + .28)})`;
+    ctx.shadowBlur = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(.55*dpr, radius), 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  // Dotted spiral arms preserve V40's nebula/galaxy shape while restoring the musical dot motion.
+  const armCount = qualityDetail < .7 ? 4 : 5;
+  const dotsPerArm = Math.max(30, Math.round(52 * qualityDetail));
+  for (let arm = 0; arm < armCount; arm++) {
+    for (let i = 0; i < dotsPerArm; i++) {
+      const q = (i + .35) / dotsPerArm;
+      const sp = visualizerSpectrumSample((q * .82 + arm * .137) % 1, audio);
+      const wv = visualizerWaveSample((q * .71 + arm * .113) % 1);
+      const taper = Math.sin(q * Math.PI);
+      const angle = q * Math.PI * 2 * (1.06 + arm*.075)
+        + arm * 1.23
+        + phase * (.44 + arm*.035)
+        + visualizerAngle * (arm % 2 ? -.15 : .12)
+        + wv * hit * .08;
+      const radius = Math.min(safeR,
+        sphereR * (.10 + q * (.67 + arm*.018))
+        + wv * taper * (3 + mid*8 + hit*8) * dpr
+        + sp * taper * (3 + energy*8 + vocal*5) * dpr
+      );
+      const flatten = .62 + arm*.032 + air*.025;
+      const x = cx + Math.cos(angle) * radius * (1 + Math.sin(angle*1.7 + phase)*.035);
+      const y = cy + Math.sin(angle) * radius * flatten;
+      const size = (.68 + q*.42 + sp*1.75 + beat*.72 + vocal*.48 + Math.abs(wv)*hit*.42) * dpr;
+      const alpha = Math.min(.94, .18 + sp*.48 + q*.11 + beat*.12 + vocal*.08 + hit*.08);
+      const color = palette[(arm + i) % 3];
+      dot(x, y, size, color, alpha, (4 + sp*8 + beat*6 + hit*5) * dpr);
+    }
+  }
+
+  // The two V40 crossing energy lanes are now dotted ellipses, keeping the same overall silhouette.
+  for (let band = 0; band < 2; band++) {
+    const count = Math.max(28, Math.round((band ? 46 : 52) * qualityDetail));
+    const rotation = (band ? .52 : -.38) + visualizerAngle * (band ? -.11 : .09);
+    const c = Math.cos(rotation), sn = Math.sin(rotation);
+    const rr = Math.min(safeR, sphereR * (1.00 + band*.13 + beat*.035));
+    const flatten = band ? .44 : .31;
+    for (let i = 0; i < count; i++) {
+      const q = i / count;
+      const sp = visualizerSpectrumSample((q + band*.19) % 1, audio);
+      const wv = visualizerWaveSample((q*.86 + band*.17) % 1);
+      const a = q * Math.PI * 2 + phase * (band ? -.10 : .12) + wv*hit*.05;
+      const localR = Math.min(safeR, rr + sp*(2 + energy*7)*dpr + wv*(2 + mid*4)*dpr);
+      const ex = Math.cos(a) * localR;
+      const ey = Math.sin(a) * localR * flatten;
+      const x = cx + ex*c - ey*sn;
+      const y = cy + ex*sn + ey*c;
+      const color = palette[(i + band*2) % 3];
+      const size = (.58 + sp*1.35 + beat*.55 + air*.36) * dpr;
+      const alpha = Math.min(.86, .13 + sp*.40 + beat*.10 + hit*.08);
+      dot(x, y, size, color, alpha, (3 + sp*7 + beat*5) * dpr);
+    }
+  }
+
+  // Dense dotted nucleus: pulses with bass/beat but stays inside the same flattened galaxy body.
+  const nucleusCount = qualityDetail < .7 ? 20 : 30;
+  for (let i = 0; i < nucleusCount; i++) {
+    const q = (i + .5) / nucleusCount;
+    const sp = visualizerSpectrumSample((q*.63 + .11) % 1, audio);
+    const wv = visualizerWaveSample((q*.77 + .23) % 1);
+    const a = i * 2.399963229728653 + phase*.18 + visualizerAngle*.12;
+    const r = sphereR * (.055 + ((i*17)%19)/19 * (.25 + bass*.05 + beat*.04)) + sp*(2 + energy*5)*dpr;
+    const x = cx + Math.cos(a)*r;
+    const y = cy + Math.sin(a)*r*(.62 + wv*.035);
+    const color = palette[(i*2 + 1) % 3];
+    const size = (.72 + sp*1.65 + bass*.65 + beat*.85) * dpr;
+    const alpha = Math.min(.96, .22 + sp*.48 + bass*.10 + beat*.16);
+    dot(x, y, size, color, alpha, (5 + sp*9 + beat*8) * dpr);
+  }
+  ctx.restore();
 }
 
 let visualizerLastPaintAt = 0;
@@ -3160,6 +3322,9 @@ function drawLyricsVisualizer() {
 
   drawThemeAccent(ctx, spec, renderCx, renderCy, sphereR, audio, dpr, safeOuterRadius - 8*dpr);
 
+  if (spec.mode === 'nebula') {
+    drawNebulaDotCore(ctx, renderCx, renderCy, sphereR, audio, dpr, safeOuterRadius - 10*dpr, quality.detail);
+  } else {
   // Dotted 3D particle sphere. Palette and deformation follow the selected UI theme.
   const latitudeBands = Math.max(16, Math.round(25 * quality.detail));
   const longitudeBands = Math.max(34, Math.round(54 * quality.detail));
@@ -3214,6 +3379,8 @@ function drawLyricsVisualizer() {
     }
   }
   ctx.shadowBlur = 0;
+
+  }
 
   // Core breathing pulse; blood mode is darker and denser.
   const core = ctx.createRadialGradient(renderCx, renderCy, 0, renderCx, renderCy, sphereR * .92);
@@ -3819,7 +3986,7 @@ function syncWindowOpacity(theme = document.body.dataset.theme) {
   if (window.echoAPI.setWindowOpacity) window.echoAPI.setWindowOpacity(value).catch(() => {});
 }
 function applyTheme(theme) {
-  const allowed = ['golden', 'light', 'dark', 'purple', 'toxic', 'blood', 'silver', 'transparent', 'fluids', 'rgb', 'love', 'space', 'dragon'];
+  const allowed = ['golden', 'light', 'dark', 'purple', 'toxic', 'blood', 'silver', 'transparent', 'fluids', 'rgb', 'love', 'space', 'nebula', 'dragon'];
   const selected = allowed.includes(theme) ? theme : 'golden';
   document.body.dataset.theme = selected;
   localStorage.setItem(STORAGE.theme, selected);
@@ -4035,7 +4202,6 @@ let smartRecommendationBusy = false;
 let smartRadioState = { active: false, seed: null, query: '', loading: false };
 let smartProgressWriteAt = 0;
 let smartClearAfterCurrent = localStorage.getItem(STORAGE.clearAfterCurrent) === 'true';
-const smartPreparedStreamUrls = new Map();
 
 function smartUniqueSongs(items) {
   const seen = new Set();
@@ -4430,7 +4596,7 @@ buildSongRow = function(song,isLibrary,contextSpec=null){const row=v140BuildSong
 const v140SetActiveContextBase = setActiveContext;
 setActiveContext = function(contextSpec,song=null,options={}){v140SetActiveContextBase(contextSpec,song,options);if(activeContext?.type!=='radio'){smartRadioState.active=false;playerRadioBtn?.classList.remove('active-mode');}};
 const v140PlayNextBase = playNext;
-playNext = async function(options={}){await smartExtendRadioIfNeeded();if(!options?.auto)smartRestoreBaseVolume();return v140PlayNextBase(options);};
+playNext = async function(options={}){if(!options?.auto){smartRestoreBaseVolume();try{Promise.resolve(smartExtendRadioIfNeeded()).catch(()=>{});}catch(_){}return v140PlayNextBase(options);}await smartExtendRadioIfNeeded();return v140PlayNextBase(options);};
 
 playerRadioBtn?.addEventListener('click',()=>{if(currentSong)startSongRadio(currentSong);else showToast('Pehle koi song play karo');});
 clearHistoryBtn?.addEventListener('click',()=>{setStored(STORAGE.smartHistory,[]);setStored(STORAGE.playStats,{});renderSmartHistory();renderSmartHomeRecommendations();showToast('Listening history cleared');});
@@ -4747,6 +4913,7 @@ const SMART_THEME_SUGGESTIONS = {
   rgb:{name:'RGB',keywords:['edm','dance','party','remix','dj','club','electro','phonk','festival','workout']},
   love:{name:'Love RGB',keywords:['love','romance','romantic','heart','pyaar','pyar','ishq','mohabbat','crush','lover','sanam','sajna']},
   space:{name:'Vibrant Space',keywords:['space','star','stars','moon','night','sky','cosmic','galaxy','universe','dreamy','midnight']},
+  nebula:{name:'Red Nebulae',keywords:['nebula','crimson','scarlet','red sky','supernova','meteor','cosmic red','galaxy red','intense night']},
   dark:{name:'Dark',keywords:['dark','deep','midnight','shadow','grunge','moody']},
   light:{name:'Light',keywords:['happy','sun','morning','bright','summer','feel good','feel-good','smile','joy']}
 };
@@ -4769,7 +4936,7 @@ function smartThemeSuggestionForSong(song, audio=window.__dinechoAudioEnergy) {
   const learned=smartThemeLearning();const remembered=learned.bySong?.[song.id]?.theme;
   if(remembered&&SMART_THEME_SUGGESTIONS[remembered])return {theme:remembered,name:SMART_THEME_SUGGESTIONS[remembered].name,score:99,remembered:true};
   const text=`${song.title||''} ${song.channel||''}`.toLowerCase();
-  const scores={golden:.72,purple:.34,toxic:.22,blood:.10,silver:.34,transparent:.18,fluids:.24,rgb:.24,love:.28,space:.34,dark:.12,light:.14};
+  const scores={golden:.72,purple:.34,toxic:.22,blood:.10,silver:.34,transparent:.18,fluids:.24,rgb:.24,love:.28,space:.34,nebula:.22,dark:.12,light:.14};
   for(const [theme,meta] of Object.entries(SMART_THEME_SUGGESTIONS)){
     for(const kw of meta.keywords)if(text.includes(kw))scores[theme]+=2.65;
     scores[theme]+=smartThemePreferenceBoost(theme);
@@ -4782,6 +4949,7 @@ function smartThemeSuggestionForSong(song, audio=window.__dinechoAudioEnergy) {
   if(/\b(acoustic|unplugged|ghazal|sufi|folk|retro|classic)\b/.test(text)){scores.golden+=2.25;scores.silver+=.45;}
   if(/\b(ambient|piano|classical|instrumental|calm|sleep|lofi|lo-fi)\b/.test(text)){scores.silver+=2.35;scores.transparent+=.65;scores.space+=.4;}
   if(/\b(night|moon|sky|dream|dreamy|cosmic|space|galaxy)\b/.test(text)){scores.space+=2.15;scores.purple+=.45;}
+  if(/\b(nebula|crimson|scarlet|supernova|meteor|cosmic red|red sky)\b/.test(text)){scores.nebula+=2.55;scores.space+=.45;scores.blood+=.2;}
   if(audio?.hasSignal){
     const energy=Math.max(0,Math.min(1,Number(audio.energy||0))),bass=Math.max(0,Math.min(1,Number(audio.bass||0))),treble=Math.max(0,Math.min(1,Number(audio.treble||0))),vocal=Math.max(0,Math.min(1,Number(audio.vocal||0))),aggr=Math.max(0,Math.min(1,Number(audio.aggression||0))),mid=Math.max(0,Math.min(1,Number(audio.mid||0))),high=Math.max(0,Math.min(1,Number(audio.highMid||0)));
     scores.rgb+=energy*2.45+treble*1.15+aggr*.9;
@@ -4791,6 +4959,7 @@ function smartThemeSuggestionForSong(song, audio=window.__dinechoAudioEnergy) {
     scores.love+=vocal*1.35+mid*.82+(1-aggr)*.2;
     scores.fluids+=mid*1.35+vocal*.85+(1-aggr)*.25;
     scores.space+=treble*1.2+high*1.0+energy*.45;
+    scores.nebula+=energy*1.15+treble*.9+high*.62+vocal*.28;
     scores.silver+=(1-energy)*1.55+(1-aggr)*.48;
     scores.transparent+=(1-energy)*.82+(1-bass)*.18;
     scores.golden+=vocal*.68+(1-aggr)*.52+mid*.25;
@@ -5207,7 +5376,7 @@ function smartStaticCommands(){
   ];
   const tabs=[['Home','home'],['Search','search'],['Downloads','library'],['Lyrics','lyrics'],['Liked Songs','liked'],['Playlists','playlists'],['History','history']];
   tabs.forEach(([label,tab])=>commands.push({label:`Open ${label}`,hint:'Navigation',keys:`open ${label.toLowerCase()} ${tab}`,run:()=>activateTab(tab)}));
-  const themes=[['Golden','golden'],['Light','light'],['Dark','dark'],['Purple','purple'],['Green Toxic','toxic'],['Blood','blood'],['Silver','silver'],['Transparent','transparent'],['Fluids','fluids'],['RGB','rgb'],['Love','love'],['Vibrant Space','space']];
+  const themes=[['Golden','golden'],['Light','light'],['Dark','dark'],['Purple','purple'],['Green Toxic','toxic'],['Blood','blood'],['Silver','silver'],['Transparent','transparent'],['Fluids','fluids'],['RGB','rgb'],['Love','love'],['Vibrant Space','space'],['Red Nebulae','nebula']];
   themes.forEach(([label,key])=>commands.push({label:`Switch Theme · ${label}`,hint:'Theme',keys:`theme ${label.toLowerCase()} ${key}`,run:()=>applyTheme(key)}));
   Object.keys(SMART_EQ_PRESETS).forEach(key=>commands.push({label:`EQ Preset · ${key[0].toUpperCase()+key.slice(1)}`,hint:'Audio',keys:`equalizer eq ${key}`,run:()=>{eqPresetSelect.value=key;eqPresetSelect.dispatchEvent(new Event('change'));activateTab('settings');}}));
   return commands;
