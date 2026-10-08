@@ -39,7 +39,8 @@ test('one-click release script uses fast local checks and delegates heavy valida
   const helper=read('scripts/release-windows.ps1');
   assert.match(helper, /refs\/tags\/\$tag/);
   assert.match(helper, /@\('push','origin',\$tag\)/);
-  assert.match(helper, /'clone','--single-branch'/);
+  assert.match(helper, /fetch --depth 1 --no-tags/);
+  assert.match(helper, /http\.version=HTTP\/1\.1/);
   assert.doesNotMatch(helper, /--force|reset --hard/);
 });
 

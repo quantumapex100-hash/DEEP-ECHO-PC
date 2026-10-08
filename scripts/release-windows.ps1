@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$ExpectedVersion,[switch]$CheckOnly)
+param([Parameter(Mandatory=$true)][string]$ExpectedVersion,[switch]$CheckOnly,[switch]$Recovery,[switch]$PrepareOnly)
 $ErrorActionPreference='Stop'
 $sourceRoot=Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $sourceRoot
@@ -6,6 +6,7 @@ $package=Get-Content package.json -Raw | ConvertFrom-Json
 $lockVersions=& node.exe -p "const l=require('./package-lock.json');[l.version,l.packages[''].version].join('|')"
 if($LASTEXITCODE -ne 0){throw 'Cannot read lockfile versions.'}
 $tag="v$ExpectedVersion"
+if($Recovery){$tag="v$ExpectedVersion-build2"}
 if($ExpectedVersion -ne '2.6.6' -or $package.version -ne $ExpectedVersion -or $lockVersions -ne "$ExpectedVersion|$ExpectedVersion"){throw 'Package and lock versions must all be 2.6.6.'}
 if($package.build.publish[0].owner -ne 'windowsdaiyu-cyber' -or $package.build.publish[0].repo -ne 'DEEP-ECHO-Releases'){throw 'Unexpected release destination.'}
 foreach($required in @('.github/workflows/release-windows.yml','RELEASE-NOTES-2.6.6.md','src/home-discovery.js','src/home-discovery.css','bin/yt-dlp.exe','.gitignore','.gitattributes')){
@@ -29,13 +30,28 @@ $sourceRepo='https://github.com/windowsdaiyu-cyber/DEEP-ECHO.git'
 $existing=& git.exe ls-remote --tags $sourceRepo "refs/tags/$tag"
 if($LASTEXITCODE -ne 0){throw 'Cannot access source repository. Complete GitHub browser sign-in and retry.'}
 if($existing){throw "$tag already exists. Release stopped to prevent duplicate publication."}
-$publishedTag=& git.exe ls-remote --tags 'https://github.com/windowsdaiyu-cyber/DEEP-ECHO-Releases.git' "refs/tags/$tag"
+$publishedTag=& git.exe ls-remote --tags 'https://github.com/windowsdaiyu-cyber/DEEP-ECHO-Releases.git' "refs/tags/v$ExpectedVersion"
 if($LASTEXITCODE -ne 0){throw 'Cannot check the release repository. Release stopped before changing source.'}
-if($publishedTag){throw "$tag already exists in the release repository. It will not be overwritten."}
+if($publishedTag){throw "v$ExpectedVersion already exists in the release repository. It will not be overwritten."}
 Write-Host 'Preparing a separate release checkout; development source is preserved.'
-$releaseRoot=Join-Path $sourceRoot ('.release-work/'+$tag+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
-New-Item -ItemType Directory -Path (Split-Path $releaseRoot) -Force | Out-Null
-Invoke-ReleaseGit -GitArgs @('clone','--single-branch','--branch','main',$sourceRepo,$releaseRoot)
+$releaseBase=Join-Path $env:LOCALAPPDATA 'DEEP-ECHO/ReleaseWork'
+$releaseRoot=Join-Path $releaseBase ($tag+'-'+[Guid]::NewGuid().ToString('N').Substring(0,12))
+New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
+Write-Host "Release checkout (outside OneDrive): $releaseRoot"
+Set-Location -LiteralPath $releaseRoot
+Invoke-ReleaseGit -GitArgs @('init','-b','main')
+Invoke-ReleaseGit -GitArgs @('remote','add','origin',$sourceRepo)
+# Fetch into an existing repository: failed transfers cannot trigger clone's
+# interactive deletion loop. Only the current main snapshot is needed.
+$fetched=$false
+for($attempt=1;$attempt -le 3;$attempt++){
+  Write-Host "Downloading source snapshot: attempt $attempt/3"
+  & git.exe -c http.version=HTTP/1.1 fetch --depth 1 --no-tags origin 'refs/heads/main:refs/remotes/origin/main'
+  if($LASTEXITCODE -eq 0){$fetched=$true;break}
+  if($attempt -lt 3){Start-Sleep -Seconds 2}
+}
+if(!$fetched){throw 'Source download failed after 3 attempts. No source/tag was pushed. Check your connection and run the BAT again.'}
+Invoke-ReleaseGit -GitArgs @('checkout','-B','main','origin/main')
 
 # Only source/release inputs are copied. No node_modules, downloaded binaries,
 # local backups, saved data, temporary previews or build outputs are staged.
@@ -50,6 +66,7 @@ foreach($relative in ($include | Select-Object -Unique)){
   }elseif(Test-Path -LiteralPath $from){Copy-Item -LiteralPath $from -Destination $to -Force}
 }
 Set-Location -LiteralPath $releaseRoot
+if($PrepareOnly){Write-Host "[OK] PrepareOnly: source downloaded and copied to $releaseRoot. No commit/push/tag/publication performed.";exit 0}
 $gitName=& git.exe config user.name
 if(!$gitName){Invoke-ReleaseGit -GitArgs @('config','user.name','windowsdaiyu-cyber')}
 $gitEmail=& git.exe config user.email
@@ -61,6 +78,6 @@ elseif($LASTEXITCODE -ne 0){throw 'Unable to inspect staged release changes.'}
 Invoke-ReleaseGit -GitArgs @('push','origin','HEAD:main')
 Invoke-ReleaseGit -GitArgs @('tag','-a',$tag,'-m','DEEP-ECHO 2.6.6')
 Invoke-ReleaseGit -GitArgs @('push','origin',$tag)
-Write-Host '[OK] Source and v2.6.6 tag pushed. Cloud tests/build/publication are now running.'
+Write-Host "[OK] Source and $tag tag pushed. Cloud tests/build/publication are now running. App version remains $ExpectedVersion."
 Write-Host 'Workflow: https://github.com/windowsdaiyu-cyber/DEEP-ECHO/actions'
 Write-Host 'Release after successful workflow: https://github.com/windowsdaiyu-cyber/DEEP-ECHO-Releases/releases/tag/v2.6.6'

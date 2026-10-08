@@ -15,3 +15,11 @@ Do not move the BAT away from its supporting scripts and source. Do not run it a
 Check without Git/network/publishing: RELEASE-2.6.6.bat -CheckOnly.
 
 Local validation: 463 Node regressions and renderer smoke passed. CheckOnly passed using Windows PowerShell. The release push, cloud workflow and installer publication have not been run in this session.
+
+## Retry after the schema-utils 404
+
+The app version bump accidentally altered two third-party dependency entries. They are restored exactly to the original lockfile; @develar/schema-utils remains 2.6.5, while app metadata remains 2.6.6. A clean isolated npm ci with installation scripts disabled downloaded all 349 packages successfully. 464 regression tests and renderer smoke passed.
+
+Run RETRY-RELEASE-2.6.6.bat in this folder. It uploads the corrected source/workflow and creates source tag v2.6.6-build2 without moving the failed v2.6.6 tag. The Windows installer, public release and updater version remain 2.6.6. Re-running the old failed workflow uses its old lockfile and does not pick up this fix. GitHub still performs the complete clean install, including installation scripts, before build/publish.
+
+Release checkout now lives under LocalAppData/DEEP-ECHO/ReleaseWork outside OneDrive. The script initializes a repository and fetches only the current main snapshot using HTTP/1.1, with up to three attempts; this avoids clone's interactive deletion loop after interrupted transfers. The updated download and source-copy path passed PrepareOnly on the first attempt, without commit/push/tag/publication. If an old interrupted clone asks to retry deleting directories, answer n until it exits, then run the updated retry BAT.

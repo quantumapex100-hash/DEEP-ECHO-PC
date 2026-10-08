@@ -39,9 +39,9 @@ jobs:
             throw 'Missing RELEASE_TOKEN repository secret.'
           }
           $packageVersion = node -p "require('./package.json').version"
-          $tagVersion = $env:GITHUB_REF_NAME.TrimStart('v')
-          if ($packageVersion -ne $tagVersion) {
-            throw "Tag v$tagVersion does not match package.json version $packageVersion"
+          $allowedTags = @("v$packageVersion", "v$packageVersion-build2")
+          if ($env:GITHUB_REF_NAME -notin $allowedTags) {
+            throw "Source tag $env:GITHUB_REF_NAME does not match package.json version $packageVersion or its recovery build"
           }
           if ($packageVersion -ne '2.6.6') {
             throw "DEEP-ECHO 2.6.6 must ship as semantic update version 2.6.6, found $packageVersion"
