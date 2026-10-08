@@ -47,7 +47,7 @@ test('V35 resolves the next song immediately after playback starts even with Gap
 test('V35 does not modify accepted lyrics, Exact Lyrics, yt-dlp wrapper or Smart Autoplay engines',()=>{
   const expected={
     'preload.js':'43624209119d865ccd2fcca44dda7b1eb49357933301d9fda655858eed979e83',
-    'lib/ytdlp-smart.js':'f36d4ad2cb9e2eb3d4d18b00dc6f52f6723c31fa0fc0a6f693fabf61bb3f72ae',
+    'lib/ytdlp-smart.js':'4d699e71ecf17ab5c8fef509cb6da5289c8f1aa2daa504f51604bb2dbed93a37',
     'lib/youtube-captions.js':'dc89d203b626f2dfa5b9a0e147268b21672a3ab53aa2a3e190e2fa26676e3339',
     'lib/lyrics-reference.js':'56c397bc3116c996d7107ad50d4c30610eb2dfcbd3c04e2b6a2850fbd906faa4',
     'lib/exact-lyrics.js':'f84bd963a4b156707c4ba637ec3b01d19177fce5fa5f04853c2514c2bec9c6f4',

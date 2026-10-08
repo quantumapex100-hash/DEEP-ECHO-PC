@@ -30,3 +30,9 @@ The container does not have the test-only `linkedom` dependency installed, so th
 
 ## Auto-update compatibility
 The release remains on the existing GitHub `latest` channel, so an installed 2.6.3 build can discover 2.6.5 directly once the installer, blockmap and `latest.yml` are published.
+
+## Fast cloud release hotfix
+- Compared against the user-provided successful `2.6.3` release package.
+- Dependencies and electron-builder configuration remain the same as the successful release line.
+- Local `npm ci` / `npm test` were removed from `RELEASE-2.6.5.bat` to prevent Windows-side dependency installation stalls.
+- The GitHub Actions workflow still performs exact `npm ci --no-audit --no-fund`, the complete `npm test`, installer publishing, and `latest.yml` verification before the release is considered successful.

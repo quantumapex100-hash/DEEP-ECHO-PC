@@ -5,3 +5,4 @@ bin/yt-dlp.exe
 build-output.log
 .DS_Store
 Thumbs.db
+.release-work/

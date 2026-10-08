@@ -521,13 +521,17 @@ function searchResultIsPlaylistLike(song) {
 let searchInstantWarmSerial = 0;
 let searchInstantWarmQueue = [];
 let searchInstantWarmRunning = false;
+let searchInstantBufferedSerial = -1;
 function searchWarmCandidate(song) {
   return !!song?.id && !song.filepath && !song.fileUrl && !song.streamUrl && !searchResultIsPlaylistLike(song);
 }
 function enqueueSearchInstantWarm(song, request = searchRequest, front = false, priorityOverride = '') {
   if (!window.echoAPI?.prefetchSong || !searchWarmCandidate(song)) return;
   const existing = smartPreparedStreamUrls?.get?.(song.id);
-  if (existing && Date.now() - Number(existing.createdAt || 0) < 7 * 60 * 1000) return;
+  if (existing && Date.now() - Number(existing.createdAt || 0) < 7 * 60 * 1000) {
+    if (front || priorityOverride === 'intent') smartWarmPreparedUrl(existing.url);
+    return;
+  }
   const priority = priorityOverride || (front ? 'intent' : 'search');
   const rank = value => value === 'next' ? 40 : value === 'intent' ? 30 : value === 'search' ? 10 : 5;
   const queuedIndex = searchInstantWarmQueue.findIndex(entry => String(entry.song?.id || '') === String(song.id));
@@ -547,9 +551,13 @@ function enqueueSearchInstantWarm(song, request = searchRequest, front = false, 
 
 function warmVisibleCards(songs, count = 2) {
   if (!Array.isArray(songs) || count <= 0) return;
-  songs.filter(searchWarmCandidate).slice(0, count).forEach(song =>
-    enqueueSearchInstantWarm(song, searchRequest, false, 'idle')
-  );
+  const request = searchRequest;
+  const candidates = songs.filter(searchWarmCandidate).slice(0, count);
+  // Let startup paint and session resume finish before speculative card requests.
+  smartRunIdle(() => {
+    if (request !== searchRequest || document.hidden) return;
+    candidates.forEach(song => enqueueSearchInstantWarm(song, searchRequest, false, 'idle'));
+  }, 1800);
 }
 async function pumpSearchInstantWarm() {
   if (searchInstantWarmRunning) return;
@@ -568,7 +576,10 @@ async function pumpSearchInstantWarm() {
           smartPreparedStreamUrls.set(song.id, { url:res.streamUrl, createdAt:Date.now(), source:'search-warm' });
           // Only the highest-priority candidate gets actual media-byte prebuffering; the rest
           // keep a resolved URL so background work stays light and bot-check resistant.
-          if (searchInstantWarmQueue.length <= 1) smartWarmPreparedUrl(res.streamUrl);
+          if (entry.priority === 'intent' || (entry.priority === 'search' && searchInstantBufferedSerial !== entry.serial)) {
+            searchInstantBufferedSerial = entry.serial;
+            smartWarmPreparedUrl(res.streamUrl);
+          }
         }
       } catch (_) {}
       await new Promise(resolve => setTimeout(resolve, 90));
@@ -656,6 +667,7 @@ async function verifyRenderedSearchLyricsSupport(results, request, contextSpec =
   };
   const worker = async () => {
     while (cursor < queue.length) {
+      if (request !== searchRequest) return;
       const song = queue[cursor++];
       if (song.lyricsVerified) continue;
       let status = null;
@@ -760,7 +772,7 @@ async function runSearch(mode = 'song', overrideQuery = '') {
       if (searchResultIsPlaylistLike(song)) { song.lyricsChecking = false; song.lyricsReady = false; song.lyricsVerified = false; }
     });
     registerSongs(results);
-    if (mode === 'song') beginSearchInstantWarm(results, request);
+    beginSearchInstantWarm(results, request);
     const context = makeContext(results, mode === 'artist' ? 'artist-search' : 'search', mode === 'artist' ? `Artist: ${q}` : 'Search Results', `${mode}:${q}`);
     results.forEach((song) => resultsList.appendChild(buildSongRow(song, false, context)));
     finishSearchProgress('Search ready');
@@ -4780,6 +4792,7 @@ let smartWarmupAudio = null;
 function smartWarmPreparedUrl(url) {
   if (!url) return;
   try {
+    if (smartWarmupAudio?.src === url) return;
     if (smartWarmupAudio) { smartWarmupAudio.pause(); smartWarmupAudio.removeAttribute('src'); smartWarmupAudio.load(); }
     smartWarmupAudio = new Audio();
     smartWarmupAudio.preload = 'auto';

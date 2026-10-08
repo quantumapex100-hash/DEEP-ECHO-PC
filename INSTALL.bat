@@ -3,6 +3,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 title DEEP-ECHO - V38 Zero-Wait Setup
 color 0A
 cd /d "%~dp0"
+if /I "%~1"=="--check-only" goto :check_only
 
 echo ============================================================
 echo          DEEP-ECHO - V38 ZERO-WAIT SETUP
@@ -115,6 +116,15 @@ if not "%APP_RC%"=="0" (
 echo.
 echo Done.
 pause
+exit /b 0
+
+:check_only
+call :validate_deps "%CD%\node_modules"
+if errorlevel 1 (
+    echo [ERROR] Required dependencies missing.
+    exit /b 1
+)
+echo [OK] Required Electron dependencies ready. No install or launch performed.
 exit /b 0
 
 :validate_deps

@@ -1,0 +1,19 @@
+.discovery-section{margin:28px 0;scroll-margin-top:20px}
+.discovery-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
+.discovery-heading h2{font-size:23px;color:var(--text);margin:0 0 5px}
+.discovery-heading p,.discovery-status{color:var(--muted);font-size:12px;line-height:1.6;margin:0}
+.discovery-status{margin:8px 0 14px}
+.discovery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:14px}
+.discovery-grid .playlist-card{min-width:0}
+.discovery-actions{display:flex;gap:8px;flex-shrink:0}
+#homeDiscoveryPlaylist{padding:20px;border:1px solid var(--border);border-radius:18px;background:var(--panel)}
+.developer-card{margin-top:30px;padding:24px!important;max-width:850px}
+.developer-bio{color:var(--text);font-weight:700;font-size:14px;line-height:1.85;max-width:650px;margin:12px 0 20px}
+.developer-instagram{display:inline-flex;padding:11px 16px;border:1px solid var(--gold);border-radius:999px;color:var(--gold-bright);background:var(--panel-2);text-decoration:none;font-weight:700;font-size:13px}
+.developer-instagram:hover,.developer-instagram:focus-visible{background:var(--panel-3);outline:2px solid var(--gold);outline-offset:3px}
+@media(max-width:900px){.discovery-heading{align-items:flex-start}.discovery-grid{grid-template-columns:repeat(auto-fill,minmax(145px,1fr))}}
+.discovery-grid.discovery-carousel{display:flex;flex-wrap:nowrap;gap:14px;overflow-x:auto;overflow-y:hidden;width:100%;min-width:0;padding:2px 2px 12px;scroll-snap-type:x proximity;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:var(--gold) var(--panel)}
+.discovery-carousel>.playlist-card,.discovery-carousel>.song-card{flex:0 0 205px;width:205px;min-width:205px;scroll-snap-align:start}
+.discovery-scroll-btn{width:36px;min-height:36px;padding:4px!important;font-size:18px!important;font-weight:700}
+.discovery-carousel:focus-visible,.discovery-scroll-btn:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+@media(max-width:900px){.discovery-carousel>.playlist-card,.discovery-carousel>.song-card{flex-basis:185px;width:185px;min-width:185px}.discovery-heading{flex-wrap:wrap}}

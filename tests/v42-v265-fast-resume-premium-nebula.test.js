@@ -12,9 +12,9 @@ const session = read('src/v2314-session-mixes-stats.js');
 const html = read('src/index.html');
 const v200 = read('src/v200.js');
 
-test('V42 uses the requested 2.6.5 visible version label and premium Red Nebulae palette', () => {
-  assert.match(html, /v228-test-label">2\.6\.5</);
-  assert.match(v200, /DEEPECHO_RELEASE_VERSION='2\.6\.5'/);
+test('V42 uses the requested 2.6.6 visible version label and premium Red Nebulae palette', () => {
+  assert.match(html, /v228-test-label">2\.6\.6</);
+  assert.match(v200, /DEEPECHO_RELEASE_VERSION='2\.6\.6'/);
   assert.match(v200, /v42Label\.textContent=DEEPECHO_RELEASE_VERSION/);
   const start = renderer.indexOf('function drawNebulaDotCore');
   const end = renderer.indexOf('let visualizerLastPaintAt', start);

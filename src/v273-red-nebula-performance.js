@@ -19,6 +19,21 @@
   // and syncLyrics() implementation intact; this only restores auto-follow and requests one forced paint.
   const syncButton = document.getElementById('lyricsSyncBtn');
   if (syncButton) {
+    // A blurred player bar clips descendants above its bounds. Mount the control
+    // outside that stacking context without replacing it or its existing handlers.
+    document.body.appendChild(syncButton);
+    const syncPlayer = document.querySelector('.player-bar');
+    const placeSyncButton = () => {
+      if (!syncPlayer) return;
+      const rect = syncPlayer.getBoundingClientRect();
+      syncButton.style.left = `${rect.left + rect.width / 2}px`;
+      syncButton.style.top = `${Math.max(8, rect.top - 44)}px`;
+    };
+    placeSyncButton();
+    window.addEventListener('resize', placeSyncButton, { passive:true });
+    if (typeof ResizeObserver === 'function' && syncPlayer) {
+      new ResizeObserver(placeSyncButton).observe(syncPlayer);
+    }
     const forceBackToPlayingLine = (event) => {
       event?.preventDefault?.();
       event?.stopImmediatePropagation?.();
@@ -26,6 +41,7 @@
         if (typeof setLyricsAutoFollow === 'function') setLyricsAutoFollow(true);
         if (typeof activeLyric !== 'undefined') activeLyric = -2;
         if (typeof syncLyrics === 'function') syncLyrics(true);
+        placeSyncButton();
         requestAnimationFrame(() => {
           try { if (typeof syncLyrics === 'function') syncLyrics(true); } catch (_) {}
         });

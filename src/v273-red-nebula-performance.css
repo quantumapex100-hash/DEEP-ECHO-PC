@@ -21,11 +21,12 @@ body.deepeccho-startup-lite .now-playing-backdrop{animation:none!important}
 /* Manual lyric return control: always opaque, always clickable, and colored by the current theme.
    Even Transparent Glass gets a solid sync pill so the player underneath cannot steal the click. */
 .lyrics-sync-float{
+  position:fixed!important;
   z-index:90!important;
   pointer-events:auto!important;
   isolation:isolate;
   opacity:1!important;
-  background:linear-gradient(135deg,var(--panel-3),var(--panel))!important;
+  background:linear-gradient(135deg,var(--panel-3),var(--panel)),#10131c!important;
   color:var(--gold-bright)!important;
   border:1px solid color-mix(in srgb,var(--gold) 72%,var(--border))!important;
   box-shadow:0 10px 28px rgba(0,0,0,.42),0 0 20px color-mix(in srgb,var(--gold) 22%,transparent)!important;
