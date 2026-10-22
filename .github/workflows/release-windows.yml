@@ -53,6 +53,7 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read the app version.' }
           $existing = & gh api "repos/$env:RELEASE_REPO/releases/tags/v$version" 2>&1
           if ($LASTEXITCODE -eq 0) {
             throw "Version $version already has a release. It will not be overwritten."
@@ -60,6 +61,10 @@ jobs:
           if (($existing -join "`n") -notmatch 'HTTP 404') {
             throw 'Cannot verify release availability. Stopping before build/publication.'
           }
+          Write-Host "Version $version is unpublished; continuing with the build."
+          # The runner propagates LASTEXITCODE. gh's expected 404 returns 1,
+          # so finish successfully only after confirming that expected absence.
+          exit 0
 
       - name: Cache Electron build tools
         uses: actions/cache@v6
