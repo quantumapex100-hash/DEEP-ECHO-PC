@@ -12,7 +12,7 @@ test('V30 playback uses default/embedded/VR recovery without inheriting global b
   assert.match(smart,/player_client=android/);
   assert.match(smart,/clientOrder = null/);
   assert.match(smart,/ignoreGlobalBackoff = false/);
-  assert.match(main,/clientOrder: \['default', 'web_embedded', 'android_vr'\]/);
+  assert.match(main,/clientOrder: \['visionos', 'default', 'web_embedded', 'android_vr'\]/);
   assert.doesNotMatch(main,/clientOrder: \['android', 'default'/);
   assert.match(main,/ignoreGlobalBackoff: true/);
   assert.match(main,/affectsGlobalBackoff: false/);

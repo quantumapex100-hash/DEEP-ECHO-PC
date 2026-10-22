@@ -25,6 +25,10 @@
   function applyBrightness(raw, persist = true) {
     const value = clamp(raw, 85, 135, 108);
     document.documentElement.style.setProperty('--v228-visualizer-brightness', String(value / 100));
+    // Under render pressure the canvas already supplies its native themed glow.
+    // Avoid an extra full-bitmap pass at the default setting; custom brightness
+    // still works, and high/ultra retain the original filter chain.
+    document.documentElement.style.setProperty('--v170-adaptive-canvas-filter', value === 108 ? 'none' : `brightness(${value / 100})`);
     if (brightnessRange) brightnessRange.value = String(value);
     if (brightnessValue) brightnessValue.textContent = `${Math.round(value)}%`;
     if (persist) localStorage.setItem(BRIGHTNESS_KEY, String(value));

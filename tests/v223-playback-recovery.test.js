@@ -14,3 +14,13 @@ test('buffered playing stream never restarts after stalled',()=>{const h=harness
 test('pause, playing, seek, end, source changes cancel pending recovery',()=>{for(const e of ['pause','playing','seeking','ended','emptied','loadstart']){const h=harness();h.emit('waiting');h.emit(e);h.advance(8000);assert.equal(h.retries.length,0,e)}});
 test('stale timer cannot reload a newly selected song or source',()=>{const h=harness();h.emit('waiting');h.c.currentSong={id:'b'};h.advance(8000);assert.equal(h.retries.length,0);const j=harness();j.emit('waiting');j.audioPlayer.currentSrc='https://audio.example/b';j.advance(8000);assert.equal(j.retries.length,0)});
 test('repeated waiting events do not postpone recovery forever; retries capped',()=>{const h=harness();for(let i=0;i<3;i++){h.emit('waiting');h.advance(4000);h.emit('waiting');h.advance(4000)}assert.equal(h.retries.length,2)});
+
+test('startup and compatible preparation cannot be interrupted by the older stall watchdog',()=>{
+ for(const busy of ['loadingRequest','playbackRecoveryPromise','remoteMediaRecoveryInFlight']){
+   const h=harness();h.c[busy]=true;h.emit('waiting');h.advance(9000);assert.equal(h.retries.length,0,busy);
+   h.c[busy]=false;h.emit('waiting');h.advance(8000);assert.equal(h.retries.length,1,'ordinary playback recovery remains available');
+ }
+});
+test('watchdog scheduled earlier yields when compatibility recovery takes ownership',()=>{
+ const h=harness();h.emit('waiting');h.c.playbackRecoveryPromise=Promise.resolve();h.advance(9000);assert.equal(h.retries.length,0);
+});

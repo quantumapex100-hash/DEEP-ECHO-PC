@@ -8,6 +8,7 @@ echo DEEP-ECHO 2.6.6 - Source checks then GitHub cloud build
 echo Expected package version 2.6.6
 echo Local dependency installation: SKIPPED
 echo Heavy dependency install/tests intentionally run on GitHub Actions
+echo GitHub login: saved sign-in or browser Authorize. No terminal username/password.
 node --check main.js || goto :fail
 node --check preload.js || goto :fail
 node --check src\renderer.js || goto :fail

@@ -17,8 +17,21 @@ const { translateLyricsPayload } = require('./lib/lyrics-translate');
 const { prepareKaraokeTrack } = require('./lib/karaoke-audio');
 const { rankCompatibleCandidates, buildCompatibleQueries, isUsableSyncedLyrics, verificationScore, lyricalHint } = require('./lib/lyrics-compatible-version');
 const { makeEntry:makeCanonicalLyricsEntry, readMatch:readCanonicalLyricsMatch, canonicalKey:canonicalLyricsKey } = require('./lib/lyrics-canonical-cache');
-const { runYtDlpSmart, runWithYtDlpContext, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
+const { runYtDlpSmart: runYtDlpSmartBase, runWithYtDlpContext, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
+const selectFastRuntime = require('./lib/fast-ytdlp-runtime').createRuntimeSelector();
+function runYtDlpSmart(executable, args, options = {}) {
+  return runYtDlpSmartBase(selectFastRuntime(executable, options), args, options);
+}
 const { isPlaylistLike, explicitPlaylistSignal, extractTracklist, choosePlayableCandidate, playlistSourceUrl, mapPlaylistEntry } = require('./lib/playlist-content');
+const {createPlaybackRelay,expiry:streamExpiry}=require('./lib/playback-relay');
+const {findPreparedPlayback}=require('./lib/prepared-playback-cache');
+const PLAYBACK_PLUGIN_DIR = path.join(__dirname, 'lib', 'playback-plugins');
+const playbackRelay=createPlaybackRelay({
+  log:(stage,data)=>playbackLog(stage,data)
+});
+app.on('will-quit',()=>playbackRelay.close());
+const playbackDebug=process.env.DEEPECHO_PLAYBACK_DEBUG==='1';
+const playbackLog=(stage,data)=>{if(playbackDebug)console.debug('[playback-timing]',stage,data);};
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
 
@@ -366,6 +379,7 @@ function createWindow(useSplash = false) {
     height: 720,
     minWidth: 800,
     minHeight: 560,
+    fullscreen: true,
     backgroundColor: '#0f0f13',
     title: 'DEEP-ECHO',
     icon: path.join(__dirname, 'src', 'assets', 'dinecho-logo.png'),
@@ -380,11 +394,14 @@ function createWindow(useSplash = false) {
       backgroundThrottling: false
     }
   });
+  if(playbackDebug){
+    mainWindow.webContents.on('dom-ready',()=>mainWindow.webContents.executeJavaScript('window.__DEEPECHO_PLAYBACK_DEBUG=true').catch(()=>{}));
+    mainWindow.webContents.on('console-message',(_event,_level,message)=>{if(message.startsWith('[playback-timing]'))console.debug(message);});
+  }
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
   // Native Windows maximize stays a normal maximized window. True edge-to-edge
-  // fullscreen is explicit only (F11 / DEEP-ECHO fullscreen button). This prevents
-  // accidental fullscreen where the Windows minimize controls disappear.
+  // Launch fullscreen as requested; F11, Escape and the app button still let users exit.
   mainWindow.on('enter-full-screen', () => sendFullscreenState(mainWindow));
   mainWindow.on('leave-full-screen', () => sendFullscreenState(mainWindow));
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -1049,7 +1066,7 @@ async function getSmartAutoplayCandidates(seed, requestedLimit = 32) {
 }
 
 ipcMain.handle('smart-autoplay-candidates', async (_event, seed, limit) => {
-  try { return await getSmartAutoplayCandidates(seed, limit); }
+  try { await waitForPlaybackPriority();return await getSmartAutoplayCandidates(seed, limit); }
   catch (err) { return { source: 'error', items: [], error: err?.message || String(err) }; }
 });
 
@@ -1089,11 +1106,10 @@ ipcMain.handle('search-suggestions', async (_event, query) => searchSuggestions(
 async function searchUserMusic(query, limit = 20) {
   const q = String(query || '').trim();
   if (!q) return [];
-  const wantsLyrics = /\b(lyrics?|lyrical)\b/i.test(q);
-  const [base, lyric] = await Promise.all([
-    searchMusic(q, Math.max(limit + 8, 26)),
-    wantsLyrics ? Promise.resolve([]) : searchMusic(`${q} lyrics`, 16)
-  ]);
+  // One relevant search supplies all upload versions. Waiting for a second
+  // lyrics search delayed every result and doubled extractor contention.
+  const base = await searchMusic(q, limit);
+  const lyric = [];
   if (base && base.error) return base;
   const ranked = rankSearchResultsForLyrics(base, lyric, q, limit);
   if (!Array.isArray(ranked)) return ranked;
@@ -1196,6 +1212,7 @@ ipcMain.handle('get-home-feed', async (_event, force = false) => {
   if (!force && homeFeedCache.data && Date.now() - homeFeedCache.at < 20 * 60 * 1000) return homeFeedCache.data;
   if (!force && homeFeedCache.job) return homeFeedCache.job;
   const job = (async () => {
+    await waitForPlaybackPriority();
     const now = new Date();
     const year = now.getFullYear();
     const month = now.toLocaleString('en-US', { month: 'long' });
@@ -1242,13 +1259,18 @@ const streamUrlCache = new Map();
 // Same-song warmup is never discarded: playback joins that exact promise and gets the URL
 // the moment it resolves.
 const streamJobs = new Map();
-const STREAM_URL_TTL = 8 * 60 * 1000;
+const classicJobs = new Map();
+
+async function waitForPlaybackPriority(){
+  for(;;){const work=[...streamJobs.values()].filter(entry=>entry.kind==='playback').map(entry=>entry.promise).concat([...classicJobs.values()].map(entry=>entry.promise));if(!work.length)return;await Promise.allSettled(work);}
+}
 
 function streamJobKey(song, quality = 'auto') {
   const qualityKey = ['high', 'medium', 'data'].includes(quality) ? quality : 'auto';
   return song?.id ? `${song.id}:${qualityKey}` : '';
 }
 function cancelStreamJobsExcept(keepKey = '') {
+  for(const [id,entry] of classicJobs)if(!keepKey.startsWith(`${id}:`))entry.controller.abort();
   for (const [key, entry] of streamJobs.entries()) {
     if (key === keepKey) continue;
     try { entry?.controller?.abort(); } catch (_) {}
@@ -1260,9 +1282,11 @@ async function resolveStreamUrl(song, quality = 'auto', options = {}) {
   const key = streamJobKey(song, qualityKey);
   if (!key || !song.url) throw new Error('Song URL missing.');
   const cached = streamUrlCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  if (!options.force && cached && cached.expiresAt > Date.now() && !playbackRelay.failure?.(cached.url)) {playbackLog('cache-hit',{id:song.id});return cached.url;}
+  if(options.force)streamUrlCache.delete(key);
   const existing = streamJobs.get(key);
   if (existing?.promise) {
+    if(existing.controller?.signal.aborted){streamJobs.delete(key);return resolveStreamUrl(song,quality,options);}
     if (options.kind !== 'prefetch') existing.kind = 'playback';
     existing.priority = Math.max(Number(existing.priority || 0), Number(options.priority || 0));
     return existing.promise;
@@ -1283,27 +1307,44 @@ async function resolveStreamUrl(song, quality = 'auto', options = {}) {
     if (options.signal.aborted) controller.abort();
     else options.signal.addEventListener('abort', () => controller.abort(), { once:true });
   }
+  const resolveStarted=Date.now();playbackLog('resolve-start',{id:song.id,kind:options.kind});
   const kind = options.kind === 'prefetch' ? 'prefetch' : 'playback';
   const priority = Number(options.priority || (kind === 'playback' ? 100 : 10));
   let job;
   job = runYtDlpSmart(
     YTDLP_PATH,
-    ['--no-warnings', '--no-playlist', '-f', format, '-g', song.url],
+    ['--plugin-dirs', PLAYBACK_PLUGIN_DIR, '--no-warnings', '--no-playlist', '--socket-timeout', '8', '--retries', '1', '--extractor-retries', '1', '-f', format, '-J', song.url],
     {
       maxBuffer: 4 * 1024 * 1024,
-      timeout: 9000,
+      // Live challenge solving can exceed nine seconds. Killing a valid extraction
+      // restarted the same work as a full-file download and multiplied the wait.
+      timeout: 30000,
       signal: controller.signal,
       purpose: kind === 'prefetch' ? 'prefetch' : 'playback',
       browserAuth: readYouTubeAccess(),
       allowFallbackClients: true,
-      clientOrder: ['default', 'web_embedded', 'android_vr'],
+      clientOrder: ['visionos', 'default', 'web_embedded', 'android_vr'],
       ignoreGlobalBackoff: true,
       affectsGlobalBackoff: false
     }
-  ).then(({ stdout }) => {
-    const url = String(stdout || '').split(/\r?\n/).map(v => v.trim()).find(v => /^https?:\/\//i.test(v));
-    if (!url) throw new Error('Playable audio URL nahi mili.');
-    streamUrlCache.set(key, { url, expiresAt: Date.now() + STREAM_URL_TTL });
+  ).then(async ({ stdout }) => {
+    const info=JSON.parse(stdout);const direct=info.url;
+    if (!/^https?:\/\//i.test(String(direct||''))) throw new Error('Playable audio URL nahi mili.');
+    // Some extractor clients return a signed URL before the site permits it.
+    // Preserve that ready time so a premature 403 cannot trigger re-extraction.
+    const media={url:direct,headers:info.http_headers||{},expiresAt:streamExpiry(direct),availableAt:Math.max(0,Number(info.available_at)||0)*1000};
+    const progressive=!/m3u8|dash_segments/i.test(info.protocol||'');
+    const url=progressive?await playbackRelay.register(media):direct;
+    // Keep one different browser audio container from the SAME extraction.
+    // If AAC is rejected, Opus can start without downloading/re-extracting the song.
+    const alternatives = (info.formats || []).filter(f => f.vcodec === 'none' &&
+      ['m4a','webm'].includes(f.ext) && f.ext !== info.ext && f.url !== direct &&
+      /^https?:\/\//i.test(String(f.url || '')) && !/m3u8|dash_segments/i.test(f.protocol || ''))
+      .sort((a,b)=>(b.abr||0)-(a.abr||0)).slice(0,1)
+      .map(f=>({url:f.url,headers:{...info.http_headers,...f.http_headers},expiresAt:streamExpiry(f.url),availableAt:Math.max(0,Number(f.available_at)||0)*1000}));
+    streamUrlCache.set(key, { url, media, alternatives, expiresAt:media.expiresAt });
+    while(streamUrlCache.size>64)streamUrlCache.delete(streamUrlCache.keys().next().value);
+    playbackLog('resolve-ready',{id:song.id,ms:Date.now()-resolveStarted});
     return url;
   }).finally(() => {
     const active = streamJobs.get(key);
@@ -1313,7 +1354,29 @@ async function resolveStreamUrl(song, quality = 'auto', options = {}) {
   return job;
 }
 
+async function reuseAlternatePlayback(song, quality = 'auto') {
+  const cached = streamUrlCache.get(streamJobKey(song, quality));
+  if (!cached || cached.expiresAt <= Date.now()) return '';
+  const media = cached.alternatives?.shift();
+  if (!media || media.expiresAt <= Date.now()) return '';
+  const url = await playbackRelay.register(media);
+  cached.url = url; cached.media = media; cached.expiresAt = media.expiresAt;
+  playbackLog('alternate-container', {id:song.id});
+  return url;
+}
 async function prepareClassicPlaybackFile(song, progress = () => {}) {
+  const existingJob=classicJobs.get(song?.id);
+  if(existingJob&&!existingJob.controller.signal.aborted)return existingJob.promise;
+  const controller=new AbortController();const entry={controller,promise:null};
+  let timedOut=false;
+  const deadline=setTimeout(()=>{timedOut=true;controller.abort();},60000);
+  entry.promise=materializeClassicPlaybackFile(song,progress,controller.signal).catch(error=>{
+    if(timedOut)throw new Error('Audio server unreachable. Retry this song after checking the connection; playback preparation was stopped safely.');
+    throw error;
+  }).finally(()=>{clearTimeout(deadline);if(classicJobs.get(song?.id)===entry)classicJobs.delete(song.id);});
+  classicJobs.set(song?.id,entry);return entry.promise;
+}
+async function materializeClassicPlaybackFile(song, progress, signal) {
   if (!song?.url || !song?.id) throw new Error('Song URL missing.');
   if (!fs.existsSync(YTDLP_PATH)) throw new Error('yt-dlp.exe nahi mila. Setup-YtDlp.bat pehle chalao.');
   fs.mkdirSync(cacheDir, { recursive: true });
@@ -1329,14 +1392,31 @@ async function prepareClassicPlaybackFile(song, progress = () => {}) {
   }
   for (const name of finishedFiles(cacheDir, prefix)) { try { fs.unlinkSync(path.join(cacheDir, name)); } catch {} }
   progress({ percent: 45, status: 'Restoring classic playback' });
+  // A codec/origin rejection by the browser need not start YouTube extraction
+  // again. Reuse the already resolved, header-preserving relay as a local file.
+  // Failed/expired relays still take the established extractor fallback below.
+  const resolved = streamUrlCache.get(streamJobKey(song, song.playbackQuality || 'auto'));
+  if (resolved?.expiresAt > Date.now() && /^http:\/\/127\.0\.0\.1:\d+\/audio\//.test(resolved.url) && !playbackRelay.failure(resolved.url)) {
+    const copyController = new AbortController();
+    const abortCopy = () => copyController.abort();
+    if (signal?.aborted) abortCopy(); else signal?.addEventListener('abort',abortCopy,{once:true});
+    const copyDeadline = setTimeout(abortCopy,4000);
+    try {
+      const filepath = await downloadDirectAudio(resolved.url, path.join(cacheDir, `${prefix}.%(ext)s`),
+        value => progress({ ...value, percent:45 + (Number(value.percent)||0)*.45, status:'Preparing local audio' }), { signal:copyController.signal });
+      return { filepath, fileUrl:pathToFileURL(filepath).href, cached:false };
+    } catch (error) { if (signal?.aborted || (!copyController.signal.aborted && isAbort(error))) throw error; }
+    finally { clearTimeout(copyDeadline); signal?.removeEventListener('abort',abortCopy); }
+  }
   await runYtDlpSmart(YTDLP_PATH, [
-    '--no-warnings', '--no-playlist', '-f',
+    '--plugin-dirs', PLAYBACK_PLUGIN_DIR, '--no-warnings', '--no-playlist', '--socket-timeout', '8', '--retries', '1', '--extractor-retries', '1', '-f',
     'bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=webm]/bestaudio',
     '-o', path.join(cacheDir, `${prefix}.%(ext)s`), song.url
   ], {
     maxBuffer: 20 * 1024 * 1024,
     timeout: 120000,
     purpose: 'classic-playback',
+    signal,
     browserAuth: readYouTubeAccess(),
     allowFallbackClients: true,
     clientOrder: ['default', 'web_embedded', 'android_vr', 'web_safari'],
@@ -1356,6 +1436,8 @@ ipcMain.handle('stream-song', async (event, song, requestId, quality = 'auto') =
   // V35 preserves same-song warmup (join it), but aborts other Search/Next/old-song probes.
   const requestedStreamKey = streamJobKey(song, quality);
   cancelStreamJobsExcept(requestedStreamKey);
+  playbackRelay.supersede(streamUrlCache.get(requestedStreamKey)?.url||'');
+  if(song.cancelOnly)return {success:true,cancelledBackground:true};
   const progress = value => sendProgress(event, 'stream-progress', { id: song.id, requestId, ...value });
   try {
     const already = readLibrary().find(s => s.id === song.id);
@@ -1363,8 +1445,20 @@ ipcMain.handle('stream-song', async (event, song, requestId, quality = 'auto') =
       progress({ percent: 100, status: 'Offline audio ready' });
       return { success: true, song: playable(already) };
     }
+    const preparing = classicJobs.get(song.id);
+    if(preparing?.promise && !preparing.controller.signal.aborted){
+      progress({percent:null,status:'Preparing audio'});
+      const ready=await preparing.promise;
+      return {success:true,song:{...song,...ready,streamUrl:'',classicPlayback:true}};
+    }
+    const prepared = findPreparedPlayback(cacheDir,song.id);
+    if (prepared) {
+      progress({percent:100,status:'Prepared audio ready'});
+      playbackLog('prepared-file-hit',{id:song.id});
+      return {success:true,song:{...song,...prepared,streamUrl:'',classicPlayback:true}};
+    }
     fs.mkdirSync(smartCacheDir, { recursive: true });
-    const cachedName = fs.readdirSync(smartCacheDir).find(name => name.startsWith(`cache-${String(song.id).replace(/[^a-zA-Z0-9_-]/g, '')}.`));
+    const cachedName = finishedFiles(smartCacheDir, `cache-${String(song.id).replace(/[^a-zA-Z0-9_-]/g, '')}`)[0];
     if (cachedName) {
       const filepath = path.join(smartCacheDir, cachedName);
       progress({ percent: 100, status: 'Smart cache ready' });
@@ -1436,6 +1530,9 @@ ipcMain.handle('resolve-song-video', async (_event, song) => {
 
 ipcMain.handle('prefetch-song', async (_event, song, quality = 'auto') => {
   try {
+    const prepared = findPreparedPlayback(cacheDir,song.id);
+    if(prepared)return {success:true,offline:true,streamUrl:prepared.fileUrl};
+    if(classicJobs.size)return {success:false,busy:true};
     const already = readLibrary().find(s => s.id === song.id);
     if (already && fs.existsSync(already.filepath)) return { success: true, offline: true };
     const requestedKey = streamJobKey(song, quality);
@@ -1458,6 +1555,11 @@ ipcMain.handle('prefetch-song', async (_event, song, quality = 'auto') => {
       }
     }
     if (replacedJobs.length) await Promise.allSettled(replacedJobs);
+    if(song.prepareLocalPlayback){
+      if(priority<30)return {success:false,busy:true};
+      const prepared=await prepareClassicPlaybackFile({...song,playbackQuality:quality});
+      return {success:true,streamUrl:prepared.fileUrl,prepared:true};
+    }
     const streamUrl = await resolveStreamUrl(song, quality, { kind:'prefetch', priority });
     return { success: true, streamUrl };
   } catch (err) {
@@ -1469,7 +1571,7 @@ ipcMain.handle('prefetch-song', async (_event, song, quality = 'auto') => {
 // Last-resort playback compatibility path. It is used only when Chromium rejects a
 // resolved direct stream. A short-lived local audio file is prepared in the temp cache;
 // it is not added to Downloads and never blocks normal direct streaming when that works.
-ipcMain.handle('prepare-compatible-playback', async (_event, song) => {
+ipcMain.handle('prepare-compatible-playback', async (event, song) => {
   try {
     if (!song?.url || !song?.id) throw new Error('Song URL missing.');
     if (!fs.existsSync(YTDLP_PATH)) throw new Error('yt-dlp.exe nahi mila. Setup-YtDlp.bat pehle chalao.');
@@ -1482,7 +1584,26 @@ ipcMain.handle('prepare-compatible-playback', async (_event, song) => {
     if (existing) return { success: true, filepath: existing.full, fileUrl: pathToFileURL(existing.full).href, cached: true };
     // If Chromium rejects a resolved GoogleVideo URL, reuse the same old-style local
     // playback fallback. It has its own cache and never inherits a bot-check cooldown.
-    const fallback = await prepareClassicPlaybackFile(song);
+    const report = value => sendProgress(event, 'stream-progress', { id:song.id, requestId:song.requestId, ...value });
+    if (!song.forceClassicPlayback) {
+      const alternate = await reuseAlternatePlayback(song, song.playbackQuality || 'auto');
+      if (alternate) {
+        report({percent:85,status:'Switching audio format'});
+        return {success:true,streamUrl:alternate,reusedExtraction:true};
+      }
+    }
+    if(!song.forceClassicPlayback && !song.preferLocalPlayback){
+      const controller = new AbortController();
+      const deadline = setTimeout(()=>controller.abort(),12000);
+      try{
+        report({percent:null,status:'Reconnecting audio'});
+        cancelStreamJobsExcept(streamJobKey(song,song.playbackQuality));
+        const streamUrl=await resolveStreamUrl(song,song.playbackQuality||'auto',{kind:'playback',force:true,signal:controller.signal});
+        return {success:true,streamUrl,fresh:true};
+      }catch(error){if(isAbort(error)&&!controller.signal.aborted)return {success:false,cancelled:true};}
+      finally{clearTimeout(deadline);}
+    }
+    const fallback = await prepareClassicPlaybackFile(song,report);
     return { success: true, filepath: fallback.filepath, fileUrl: fallback.fileUrl, classicPlayback: true };
   } catch (err) {
     const bot = err?.code === 'YOUTUBE_BOT_CHECK' || isBotChallenge(err);

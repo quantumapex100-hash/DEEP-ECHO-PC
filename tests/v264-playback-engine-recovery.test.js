@@ -8,7 +8,7 @@ const smart = fs.readFileSync(path.join(root, 'lib/ytdlp-smart.js'), 'utf8');
 const setup = fs.readFileSync(path.join(root, 'Setup-YtDlp.bat'), 'utf8');
 
 test('playback no longer prioritizes the broken android_vr client', () => {
-  assert.match(main, /clientOrder:\s*\['default',\s*'web_embedded',\s*'android_vr'\]/);
+  assert.match(main, /clientOrder:\s*\['visionos',\s*'default',\s*'web_embedded',\s*'android_vr'\]/);
   assert.doesNotMatch(main, /clientOrder:\s*\['android',\s*'default'/);
 });
 

@@ -24,6 +24,7 @@ downloadSong:async s=>{library=[{...s,filepath:'C:/song.wav'}];return {success:t
 const context=vm.createContext(window);
 const evaluate=s=>vm.runInContext(s,context);
 const tick=()=>new Promise(r=>setImmediate(r));
+const settle=()=>new Promise(r=>require('node:timers').setTimeout(r,85));
 const q=s=>window.document.querySelector(s);
 (async()=>{
   evaluate(fs.readFileSync('src/effects.js','utf8'));evaluate(fs.readFileSync('src/renderer.js','utf8'));
@@ -32,7 +33,7 @@ const q=s=>window.document.querySelector(s);
   streamProgress({id:'a',requestId:requests.get('a').id,percent:42,status:'Loading audio'});
   assert.match(q('#playLoadingText').textContent,/42%/);
   evaluate('playRemoteSong({id:"b",title:"Second",channel:"Artist"})');
-  requests.get('b').resolve({success:true,song:{...songs[1],filepath:'C:/song #2.wav',fileUrl:'file:///C:/song%20%232.wav'}});await tick();
+  await settle();requests.get('b').resolve({success:true,song:{...songs[1],filepath:'C:/song #2.wav',fileUrl:'file:///C:/song%20%232.wav'}});await tick();
   requests.get('a').resolve({success:true,song:{...songs[0],filepath:'C:/song1.wav'}});await tick();
   assert.match(q('#nowTitle').textContent,/Second/);assert.equal(audio.src,'file:///C:/song%20%232.wav');
   q('#playerLikeBtn').click();assert.equal(q('#playerLikeBtn').getAttribute('aria-pressed'),'true');assert.ok(q('#playerLikeBtn svg'));
@@ -55,6 +56,7 @@ const q=s=>window.document.querySelector(s);
     for(let i=0;i<3;i++)window.drawDinechoEffect(ctx,{width:1100,height:720},theme);
   }
   assert.equal(JSON.parse(storage.get('echo-liked-songs-v1')).length,1);
-  evaluate('playRemoteSong({id:"fail",title:"Fail",channel:"Artist"})');requests.get('fail').resolve({success:false,error:'offline'});await tick();assert.match(q('#playLoadingText').textContent,/Could not play/);
+  evaluate('playRemoteSong({id:"fail",title:"Fail",channel:"Artist"})');await settle();requests.get('fail').resolve({success:false,error:'offline'});await tick();assert.match(q('#playLoadingText').textContent,/Could not play/);
   console.log('PASS DOM integration: golden default, Downloads, 42% event, stale playback and lyrics, safe file URL, play/heart/download SVGs, download state, playlist create/add, likes storage, timed lyrics, 5 theme switches, animation smoke checks, manual-only queue add/panel, loop all/one, failed playback UI. Audio, canvas, IPC mocked; no visual rendering.');
 })().catch(e=>{console.error(e);process.exit(1)});
+

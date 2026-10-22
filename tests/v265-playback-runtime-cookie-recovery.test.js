@@ -24,7 +24,7 @@ test('V30 uses private Deno installed beside yt-dlp instead of forcing system No
 });
 
 test('V30 playback tries PO-token-free recovery clients before legacy Android', () => {
-  assert.match(main, /clientOrder:\s*\['default',\s*'web_embedded',\s*'android_vr'\]/);
+  assert.match(main, /clientOrder:\s*\['visionos',\s*'default',\s*'web_embedded',\s*'android_vr'\]/);
   assert.match(main, /clientOrder:\s*\['default',\s*'web_embedded',\s*'android_vr',\s*'web_safari'\]/);
   assert.doesNotMatch(main, /clientOrder:\s*\['android',\s*'default'/);
 });

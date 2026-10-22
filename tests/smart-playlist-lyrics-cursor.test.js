@@ -53,8 +53,7 @@ test('premium cursor is compact, internally animated, and still covers all theme
   assert.match(css, /\.dinecho-live-cursor \{ width: 34px; height: 34px; \}/);
   assert.match(css, /@keyframes cursorEnergyRun/);
   assert.match(css, /\.cursor-live-streak/);
-  assert.match(renderer, /style\.left = `\$\{liveCursorX - 3\}px`/);
-  assert.match(renderer, /style\.top = `\$\{liveCursorY - 3\}px`/);
+  assert.match(renderer, /style\.transform = `translate\(\$\{liveCursorX - 3\}px, \$\{liveCursorY - 3\}px\)`/);
   for (const theme of themes) {
     const re = new RegExp(`\\b${theme}:\\s*` + '`<svg[\\s\\S]*?cursor-live-streak');
     assert.match(renderer, re);

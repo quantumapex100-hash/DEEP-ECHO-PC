@@ -65,8 +65,50 @@
     lightning.push({ life: 1, segments });
   }
 
+  let particleGlowSprite = null, particleGlowPalette = '';
+  function cachedParticleGlow(cfg) {
+    const palette = cfg.glow.join(',');
+    if (palette === particleGlowPalette) return particleGlowSprite;
+    particleGlowPalette = palette;
+    particleGlowSprite = document.createElement('canvas');
+    particleGlowSprite.width = particleGlowSprite.height = 128;
+    const paint = particleGlowSprite.getContext('2d');
+    if (!paint) { particleGlowSprite = null; return null; }
+    const glow = paint.createRadialGradient(64,64,0,64,64,64);
+    glow.addColorStop(0,`rgba(${palette},1)`);
+    glow.addColorStop(1,`rgba(${palette},0)`);
+    paint.fillStyle = glow; paint.fillRect(0,0,128,128);
+    return particleGlowSprite;
+  }
+
   repopulate();
   let lastTheme = themeName();
+
+  let softEffectBuffer = null;
+  function drawBufferedSoftEffect(theme) {
+    if (!softEffectBuffer) {
+      const surface = document.createElement('canvas'), raw = surface.getContext('2d');
+      if (!raw) return false;
+      const methods = new Map(), entry = {surface,raw,scale:1};
+      entry.paint = new Proxy(raw, {
+        get(target,key) { const value=target[key]; if(typeof value!=='function')return value; if(!methods.has(key))methods.set(key,value.bind(target));return methods.get(key); },
+        set(target,key,value) {
+          // Keep the apparent blur radius identical at the smaller pixel scale.
+          target[key] = key==='filter' && typeof value==='string' ? value.replace(/blur\(([\d.]+)px\)/g,(_,r)=>`blur(${Number(r)*entry.scale}px)`) : value;
+          return true;
+        }
+      });
+      softEffectBuffer=entry;
+    }
+    const entry=softEffectBuffer,scale=Math.min(.65,1280/canvas.width,900/canvas.height);
+    const width=Math.max(1,Math.round(canvas.width*scale)),height=Math.max(1,Math.round(canvas.height*scale));
+    if(entry.surface.width!==width || entry.surface.height!==height){entry.surface.width=width;entry.surface.height=height;}
+    entry.scale=scale;entry.raw.setTransform(scale,0,0,scale,0,0);
+    entry.raw.clearRect(0,0,canvas.width,canvas.height);
+    // Logical coordinates, colours and cursor physics stay at the real viewport size.
+    if (!window.drawDinechoEffect(entry.paint,canvas,theme)) return false;
+    ctx.drawImage(entry.surface,0,0,canvas.width,canvas.height);return true;
+  }
 
   function tick() {
     if (window.__deepecchoGameMode) {
@@ -95,13 +137,14 @@
     else if (theme === 'nebula') spaceLastRender = frameNow;
     else spaceLastRender = 0;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (window.drawDinechoEffect && window.drawDinechoEffect(ctx, canvas, theme)) {
+    if (window.drawDinechoEffect && (['fluids','rgb'].includes(theme) ? drawBufferedSoftEffect(theme) : window.drawDinechoEffect(ctx, canvas, theme))) {
       requestAnimationFrame(tick);
       return;
     }
 
     if (cfg.mode === 'lightning' && Math.random() < 0.02) buildLightning();
 
+    const glowSprite = cachedParticleGlow(cfg), baseAlpha = ctx.globalAlpha;
     for (const p of particles) {
       p.y -= p.speed;
       p.x += p.drift + Math.sin((p.pulse += 0.01)) * 0.08;
@@ -127,13 +170,18 @@
       if (p.alpha < 0.06) p.alpha = 0.06;
       if (p.alpha > 0.72) p.alpha = 0.72;
       const spread = cfg.mode === 'soft' ? p.r * 2.5 : p.r * 4;
-      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, spread);
-      grad.addColorStop(0, `rgba(${cfg.glow[0]},${cfg.glow[1]},${cfg.glow[2]},${p.alpha})`);
-      grad.addColorStop(1, `rgba(${cfg.glow[0]},${cfg.glow[1]},${cfg.glow[2]},0)`);
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, spread, 0, Math.PI * 2);
-      ctx.fill();
+      if (glowSprite) {
+        // The same radial glow and per-particle opacity, reusing one palette texture.
+        ctx.globalAlpha = baseAlpha * p.alpha;
+        ctx.drawImage(glowSprite,p.x-spread,p.y-spread,spread*2,spread*2);
+        ctx.globalAlpha = baseAlpha;
+      } else {
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, spread);
+        grad.addColorStop(0, `rgba(${cfg.glow[0]},${cfg.glow[1]},${cfg.glow[2]},${p.alpha})`);
+        grad.addColorStop(1, `rgba(${cfg.glow[0]},${cfg.glow[1]},${cfg.glow[2]},0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();ctx.arc(p.x,p.y,spread,0,Math.PI*2);ctx.fill();
+      }
 
       ctx.fillStyle = `rgba(${cfg.core[0]},${cfg.core[1]},${cfg.core[2]},${p.alpha})`;
       ctx.beginPath();
@@ -442,6 +490,9 @@ function shuffledCopy(items) {
 
 // ================= Tabs =================
 function activateTab(tabName) {
+  // Apply the efficient Lyrics surface before its first visible paint.
+  document.body.classList.toggle('lyrics-render-efficient', tabName === 'lyrics' &&
+    String(window.__dinechoVisualizerQuality || 'balanced') === 'balanced');
   navItems.forEach((n) => n.classList.toggle('active', n.dataset.tab === tabName));
   views.forEach((v) => v.classList.remove('active'));
   const target = document.getElementById(tabName + 'View');
@@ -454,7 +505,7 @@ function activateTab(tabName) {
     renderRecentlyPlayed();
     loadHomeContent();
   }
-  if (tabName === 'lyrics' && lyricsAutoFollow && lyricLines.length) requestAnimationFrame(() => syncLyrics(true));
+  if (tabName === 'lyrics' && lyricLines.length) requestAnimationFrame(() => { if (lyricsAutoFollow) syncLyrics(true); smartUpdateKaraoke(); });
   updateLyricsSyncButton();
 }
 
@@ -527,9 +578,10 @@ function searchWarmCandidate(song) {
 }
 function enqueueSearchInstantWarm(song, request = searchRequest, front = false, priorityOverride = '') {
   if (!window.echoAPI?.prefetchSong || !searchWarmCandidate(song)) return;
+  if (typeof loadingRequest !== 'undefined' && loadingRequest) return;
   const existing = smartPreparedStreamUrls?.get?.(song.id);
   if (existing && Date.now() - Number(existing.createdAt || 0) < 7 * 60 * 1000) {
-    if (front || priorityOverride === 'intent') smartWarmPreparedUrl(existing.url);
+    if (front || priorityOverride === 'intent') smartWarmPreparedUrl(existing.url,song);
     return;
   }
   const priority = priorityOverride || (front ? 'intent' : 'search');
@@ -545,40 +597,47 @@ function enqueueSearchInstantWarm(song, request = searchRequest, front = false, 
     return;
   }
   const entry = { song: queueSong(song), request, serial: searchInstantWarmSerial, priority };
-  if (front) searchInstantWarmQueue.unshift(entry); else searchInstantWarmQueue.push(entry);
+  if(front){searchInstantWarmQueue=searchInstantWarmQueue.filter(x=>x.priority==='next');searchInstantWarmQueue.unshift(entry);}else if(searchInstantWarmQueue.length<2)searchInstantWarmQueue.push(entry);
   void pumpSearchInstantWarm();
 }
 
 function warmVisibleCards(songs, count = 2) {
   if (!Array.isArray(songs) || count <= 0) return;
   const request = searchRequest;
-  const candidates = songs.filter(searchWarmCandidate).slice(0, count);
+  if(loadingRequest)return;
+  const candidates = songs.filter(searchWarmCandidate).slice(0, Math.min(count,2));
   // Let startup paint and session resume finish before speculative card requests.
   smartRunIdle(() => {
-    if (request !== searchRequest || document.hidden) return;
+    if (request !== searchRequest || document.hidden || loadingRequest) return;
     candidates.forEach(song => enqueueSearchInstantWarm(song, searchRequest, false, 'idle'));
   }, 1800);
 }
 async function pumpSearchInstantWarm() {
+  if (typeof loadingRequest!=='undefined' && loadingRequest) return;
   if (searchInstantWarmRunning) return;
   searchInstantWarmRunning = true;
   try {
     while (searchInstantWarmQueue.length) {
+      if(typeof loadingRequest!=='undefined'&&loadingRequest)break;
       const entry = searchInstantWarmQueue.shift();
       if (!entry?.song || entry.serial !== searchInstantWarmSerial || entry.request !== searchRequest) continue;
       const song = entry.song;
       const cached = smartPreparedStreamUrls.get(song.id);
       if (cached && Date.now() - Number(cached.createdAt || 0) < 7 * 60 * 1000) continue;
       try {
-        const res = await window.echoAPI.prefetchSong({ ...normalizeSong(song), prefetchPriority:entry.priority || 'search' }, window.__dinechoAudioQuality || 'auto');
+        const quality = window.__dinechoAudioQuality || 'auto';
+        const owner = playRequest;
+        const res = await window.echoAPI.prefetchSong({ ...normalizeSong(song), prefetchPriority:entry.priority || 'search' }, quality);
         if (entry.serial !== searchInstantWarmSerial || entry.request !== searchRequest) continue;
+        if (owner !== playRequest || loadingRequest || quality !== (window.__dinechoAudioQuality || 'auto')) continue;
         if (res?.success && res.streamUrl) {
           smartPreparedStreamUrls.set(song.id, { url:res.streamUrl, createdAt:Date.now(), source:'search-warm' });
+          while(smartPreparedStreamUrls.size>16)smartPreparedStreamUrls.delete(smartPreparedStreamUrls.keys().next().value);
           // Only the highest-priority candidate gets actual media-byte prebuffering; the rest
           // keep a resolved URL so background work stays light and bot-check resistant.
           if (entry.priority === 'intent' || (entry.priority === 'search' && searchInstantBufferedSerial !== entry.serial)) {
             searchInstantBufferedSerial = entry.serial;
-            smartWarmPreparedUrl(res.streamUrl);
+            smartWarmPreparedUrl(res.streamUrl,entry.priority==='intent'?song:null);
           }
         }
       } catch (_) {}
@@ -597,7 +656,7 @@ function beginSearchInstantWarm(results, request) {
   // across the next visible results. There is still only ONE yt-dlp prefetch at a time, so this
   // improves click readiness without recreating the old request storm.
   singles.slice(0, 2).forEach(song => enqueueSearchInstantWarm(song, request, false));
-  singles.slice(2, 6).forEach(song => enqueueSearchInstantWarm(song, request, false));
+  // Automatic Search warmup is capped at two; pointer intent can promote one different target.
 }
 
 function isPlaylistDetailContext(contextSpec) {
@@ -774,7 +833,15 @@ async function runSearch(mode = 'song', overrideQuery = '') {
     registerSongs(results);
     beginSearchInstantWarm(results, request);
     const context = makeContext(results, mode === 'artist' ? 'artist-search' : 'search', mode === 'artist' ? `Artist: ${q}` : 'Search Results', `${mode}:${q}`);
-    results.forEach((song) => resultsList.appendChild(buildSongRow(song, false, context)));
+    // Yield between small batches so pointer/skip input can run while rows are built.
+    for (let offset=0; offset<results.length; offset+=12) {
+      if (request !== searchRequest) return;
+      const fragment=document.createDocumentFragment();
+      results.slice(offset,offset+12).forEach(song=>fragment.appendChild(buildSongRow(song,false,context)));
+      resultsList.appendChild(fragment);
+      if(offset+12<results.length)await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    if (request !== searchRequest) return;
     finishSearchProgress('Search ready');
     if(mode==='song') void verifyRenderedSearchLyricsSupport(results,request,context);
   } catch (err) {
@@ -1433,6 +1500,7 @@ function buildSongRow(song, isLibrary, contextSpec = null) {
   row.dataset.songId = String(song?.id || '');
 
   const img = document.createElement('img');
+  img.decoding = 'async';
   img.src = song.thumbnail || '';
   img.alt = '';
   row.appendChild(img);
@@ -1480,9 +1548,10 @@ function buildSongRow(song, isLibrary, contextSpec = null) {
   likeBtn.dataset.likeId = song.id;
   likeBtn.title = 'Like';
   likeBtn.classList.add('action-like');
-  setLikeIcon(likeBtn, isLiked(song));
+  const liked = isLiked(song);
+  setLikeIcon(likeBtn, liked);
   likeBtn.classList.add('row-icon');
-  likeBtn.classList.toggle('active-like', isLiked(song));
+  likeBtn.classList.toggle('active-like', liked);
   likeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleLike(song);
@@ -1556,6 +1625,15 @@ function buildSongRow(song, isLibrary, contextSpec = null) {
   return row;
 }
 
+const playbackDiagnostics=[];let playbackStart=0;
+function playbackMark(stage,requestId,id){
+  if(!window.__DEEPECHO_PLAYBACK_DEBUG)return;
+  if(stage==='selected')playbackStart=performance.now();
+  const entry={stage,requestId,id,ms:Math.round(performance.now()-playbackStart)};
+  playbackDiagnostics.push(entry);if(playbackDiagnostics.length>100)playbackDiagnostics.shift();console.debug('[playback-timing]',JSON.stringify(entry));
+}
+window.deepEchoPlaybackTimings=()=>playbackDiagnostics.slice();
+let navigationIntent=0;
 let playRequest = 0;
 let loadingRequest = null;
 let loadingTimer = null;
@@ -1576,6 +1654,7 @@ function showPlayLoading(percent, status, title = '') {
 function hidePlayLoading() { loadingWrap.classList.add('hidden'); }
 let smartSecondaryPlaybackTimer = 0;
 let smartPrefetchTimer = 0;
+let remoteSelectionAt = 0;
 function smartRunIdle(task, delay = 0) {
   const run = () => {
     if (typeof requestIdleCallback === 'function') requestIdleCallback(() => { try { task(); } catch (_) {} }, { timeout: 900 });
@@ -1611,6 +1690,9 @@ if (window.echoAPI.onStreamProgress) window.echoAPI.onStreamProgress(progress =>
 async function playRemoteSong(song, button) {
   const requestId = ++playRequest;
   const oldContent = button && button.innerHTML;
+  playbackMark('selected',requestId,song.id);
+  clearTimeout(smartSecondaryPlaybackTimer);clearTimeout(smartPrefetchTimer);
+  smartReleasePlaybackWarmers(smartPreparedStreamUrls.get(song.id)?.url || '');
   const previousUi = {
     title: nowTitle.textContent, channel: nowChannel.textContent, thumb: nowThumb.src,
     seek: seekBar.value, current: curTime.textContent, duration: durTime.textContent,
@@ -1627,9 +1709,21 @@ async function playRemoteSong(song, button) {
   showPlayLoading(5, 'Connecting', song.title);
   if (button) { button.disabled = true; button.innerHTML = icon('loading'); }
   try {
+    // Coalesce rapid cold skips before spawning extraction. Context/queue selection
+    // still advances for every tap; only the latest request is allowed to start.
+    const selectedAt=performance.now();
+    const burst=remoteSelectionAt>0&&selectedAt-remoteSelectionAt<140;
+    remoteSelectionAt=selectedAt;
+    const ready=smartPreparedStreamUrls.get(song.id);
+    if(burst&&!(ready&&Date.now()-ready.createdAt<7*60*1000)) {
+      await new Promise(resolve=>setTimeout(resolve,70));
+      if(requestId!==playRequest)return;
+    }
+    playbackMark('resolve-start',requestId,song.id);
     const res = await window.echoAPI.streamSong(normalizeSong(song), requestId, window.__dinechoAudioQuality || 'auto');
     if (requestId !== playRequest) return;
     if (!res.success) { const e = new Error(res.error); e.code = res.errorCode; e.needsBrowserAuth = !!res.needsBrowserAuth; throw e; }
+    playbackMark('resolve-ready',requestId,song.id);
     await playLocal(res.song, requestId);
   } catch (err) {
     if (requestId === playRequest) {
@@ -1644,7 +1738,7 @@ async function playRemoteSong(song, button) {
       loadingTimer = setTimeout(hidePlayLoading, 7000);
     }
   } finally {
-    if (requestId === playRequest) loadingRequest = null;
+    if (requestId === playRequest) {loadingRequest = null;void pumpSearchInstantWarm();}
     if (button) { button.innerHTML = oldContent; button.disabled = false; }
   }
 }
@@ -1703,6 +1797,7 @@ function wrapContextIndex(index) {
 }
 
 async function startSingleSong(song, button, contextSpec = null) {
+  navigationIntent++;
   const item = queueSong(song);
   if (!item) return;
   if (contextSpec) setActiveContext(contextSpec, item);
@@ -1719,11 +1814,16 @@ async function playSongObject(song, button, source = 'context', { recordHistory:
   const item = queueSong(song);
   if (!item) return false;
   const beforeId = currentSong && currentSong.id;
-  if (item.filepath || item.fileUrl || item.streamUrl) await playLocal(item);
-  else await playRemoteSong(item, button);
-  const started = !!currentSong && currentSong.id === item.id;
+  const pending=(item.filepath || item.fileUrl)?playLocal(item):playRemoteSong(item,button);
+  const owner=playRequest;await pending;
+  if(owner!==playRequest)return false;
+  const started = !!currentSong && currentSong.id === item.id && !audioPlayer.paused;
   if (started) {
     currentPlaybackSource = source;
+    if(currentSong.streamUrl) {
+      smartPreparedStreamUrls.set(item.id,{url:currentSong.streamUrl,createdAt:Date.now(),source:'played'});
+      while(smartPreparedStreamUrls.size>16)smartPreparedStreamUrls.delete(smartPreparedStreamUrls.keys().next().value);
+    }
     if (shouldRecord && (beforeId !== item.id || historyIndex < 0)) recordPlayback(currentSong);
   }
   // Resolve the upcoming song almost immediately after audio starts. Game Mode keeps the
@@ -1792,6 +1892,8 @@ function previousContextIndex() {
 }
 
 async function playNext({ auto = false } = {}) {
+  const intent=++navigationIntent;
+  playbackMark('next',playRequest+1,currentSong?.id);
   if (!auto && typeof smartRecordSkipSignal === 'function') smartRecordSkipSignal(currentSong);
   if (auto && loopMode === 'one' && currentSong) {
     audioPlayer.currentTime = 0;
@@ -1814,12 +1916,14 @@ async function playNext({ auto = false } = {}) {
       const next = nextContextIndex();
       if (next < 0) break;
       const started = await playContextAt(next);
+      if(intent!==navigationIntent)return;
       if (started) return;
     }
   }
 
   // Only truly context-less playback may fall back to a random known track.
   const randomSong = await getRandomFallbackSong();
+  if(intent!==navigationIntent)return;
   if (!randomSong) {
     showToast('Next song nahi mila');
     return;
@@ -1830,6 +1934,7 @@ async function playNext({ auto = false } = {}) {
 }
 
 async function playPrevious() {
+  navigationIntent++;
   // Section playback is circular: first <- last and last -> first.
   if (currentPlaybackSource === 'context' && activeContext?.items?.length) {
     const previous = previousContextIndex();
@@ -2085,6 +2190,18 @@ function isUnsupportedPlaybackError(error) {
     /no supported source|src_not_supported|not supported/i.test(String(error?.message || '')) ||
     audioPlayer.error?.code === 4;
 }
+async function prepareCompatiblePlaybackWithDeadline(song, requestId, timeoutMs = 75000) {
+  let timer;
+  try {
+    return await Promise.race([
+      window.echoAPI.prepareCompatiblePlayback({...song,requestId}),
+      new Promise((_,reject)=>{timer=setTimeout(()=>{
+        const error=new Error('Audio preparation timed out. Please retry the song.');
+        error.code='COMPATIBLE_AUDIO_TIMEOUT';reject(error);
+      },timeoutMs);})
+    ]);
+  } finally { clearTimeout(timer); }
+}
 async function recoverCompatiblePlayback(song, requestId = playRequest, reason = 'unsupported-source') {
   if (!song?.id || !song.streamUrl || song.filepath || song.fileUrl || !window.echoAPI?.prepareCompatiblePlayback) {
     return { success:false, skipped:true };
@@ -2099,28 +2216,38 @@ async function recoverCompatiblePlayback(song, requestId = playRequest, reason =
 
   const recovery = (async () => {
     try {
-      const fallback = await window.echoAPI.prepareCompatiblePlayback(normalizeSong(song));
+      smartReleasePlaybackWarmers();
+      let fallback = await prepareCompatiblePlaybackWithDeadline({...normalizeSong(song),playbackQuality:window.__dinechoAudioQuality||'auto',preferLocalPlayback:true},requestId);
       if (requestId !== playRequest || String(currentSong?.id || '') !== String(song.id)) {
         return { success:false, cancelled:true };
       }
-      if (!fallback?.success || !fallback.fileUrl) {
+      if (!fallback?.success || (!fallback.fileUrl&&!fallback.streamUrl)) {
         const error = new Error(fallback?.error || 'Compatible audio could not be prepared');
         error.code = fallback?.errorCode || 'COMPATIBLE_AUDIO_FAILED';
         throw error;
       }
 
-      audioPlayer.src = fallback.fileUrl;
+      configurePlaybackOrigin(fallback.streamUrl||fallback.fileUrl);
+      audioPlayer.src = fallback.streamUrl||fallback.fileUrl;
       audioAnalyserMediaKey = '';
       resetVisualizerSignalState();
       currentSong = {
         ...currentSong,
         filepath: fallback.filepath || '',
         fileUrl: fallback.fileUrl,
-        streamUrl: '',
-        classicPlayback: true
+        streamUrl: fallback.streamUrl||'',
+        classicPlayback: !!fallback.fileUrl
       };
 
-      await audioPlayer.play();
+      try{await waitForPlaybackStart(requestId);}catch(error){
+        if(!fallback.streamUrl||requestId!==playRequest)throw error;
+        fallback=await prepareCompatiblePlaybackWithDeadline({...normalizeSong(song),playbackQuality:window.__dinechoAudioQuality||'auto',forceClassicPlayback:true},requestId);
+        if(requestId!==playRequest)return {success:false,cancelled:true};
+        if(!fallback?.success||!fallback.fileUrl)throw new Error(fallback?.error||'Compatible audio unavailable');
+        configurePlaybackOrigin(fallback.fileUrl);audioPlayer.src=fallback.fileUrl;audioAnalyserMediaKey='';resetVisualizerSignalState();
+        currentSong={...currentSong,filepath:fallback.filepath||'',fileUrl:fallback.fileUrl,streamUrl:'',classicPlayback:true};
+        await waitForPlaybackStart(requestId);
+      }
       if (requestId !== playRequest || String(currentSong?.id || '') !== String(song.id)) {
         return { success:false, cancelled:true };
       }
@@ -2154,15 +2281,35 @@ async function recoverCompatiblePlayback(song, requestId = playRequest, reason =
     }
   }
 }
+function configurePlaybackOrigin(source,media=audioPlayer){
+  // Local relay supplies CORS headers so the existing captureStream analyser remains usable.
+  if(/^http:\/\/127\.0\.0\.1:\d+\/audio\//.test(String(source||'')))media.crossOrigin='anonymous';
+  else media.removeAttribute('crossorigin');
+}
+async function waitForPlaybackStart(requestId,timeoutMs=12000){
+  let timer;
+  const deadline=new Promise((_,reject)=>{
+    timer=setTimeout(()=>{
+      const superseded=requestId!==playRequest;
+      if(!superseded)audioPlayer.pause();
+      const error=new Error(superseded?'Playback superseded':'Audio server did not start sending playable audio');
+      error.name=superseded?'AbortError':'TimeoutError';reject(error);
+    },timeoutMs);
+  });
+  try{return await Promise.race([audioPlayer.play(),deadline]);}
+  finally{clearTimeout(timer);}
+}
 async function playLocal(song, requestId) {
   if (!song || (!song.filepath && !song.fileUrl && !song.streamUrl)) return;
-  if (requestId === undefined) { requestId = ++playRequest; loadingRequest = null; }
+  if (requestId === undefined) { requestId = ++playRequest; loadingRequest = null; smartReleasePlaybackWarmers(); clearTimeout(smartSecondaryPlaybackTimer); clearTimeout(smartPrefetchTimer); playbackMark('selected',requestId,song.id); void window.echoAPI.streamSong({...normalizeSong(song),cancelOnly:true},requestId,window.__dinechoAudioQuality||'auto').catch(()=>{}); }
   if (requestId !== playRequest) return;
   showPlayLoading(100, 'Starting playback', song.title);
+  playbackMark('source-assigned',requestId,song.id);
   // Main-process URL handles spaces, # and Unicode Windows filenames.
   const filePath = song.filepath ? song.filepath.replace(/\\/g, '/') : '';
   visualizerLocalRecoverySongId = '';
   visualizerLocalRecoveryPending = false;
+  configurePlaybackOrigin(song.streamUrl||song.fileUrl||'');
   audioPlayer.src = song.streamUrl || song.fileUrl || 'file:///' + filePath.split('/').map((part, index) => index === 0 ? part : encodeURIComponent(part)).join('/');
   audioAnalyserMediaKey = ''; // force a fresh capture stream for the new media resource.
   resetVisualizerSignalState();
@@ -2176,13 +2323,18 @@ async function playLocal(song, requestId) {
   seekBar.value = 0; curTime.textContent = '0:00'; durTime.textContent = song.duration || '0:00';
   syncPlayerLikeState(); syncPlayerDownloadState();
   try {
-    await audioPlayer.play();
+    await waitForPlaybackStart(requestId);
+    playbackMark('first-audio',requestId,song.id);
     if (requestId !== playRequest) return;
+    smartReleasePlaybackWarmers();
     smartScheduleSecondaryPlayback(currentSong, requestId, 420);
+    // Only audible playback may start this early lane; the selected source has already resolved.
+    if (!window.__deepecchoGameMode) void prefetchNextQueued({ audibleRequestId: requestId });
     if (song.chapterFallback && Number(song.startTime) > 0 && Number.isFinite(audioPlayer.duration)) {
       try { audioPlayer.currentTime = Math.min(Math.max(0, Number(song.startTime)), Math.max(0, audioPlayer.duration - .05)); } catch (_) {}
     }
     await resumeAudioAnalyser(true);
+    if (requestId !== playRequest) return;
     startLyricsVisualizer();
     startAudioEnergyTicker();
     addRecentlyPlayed(song);
@@ -2245,6 +2397,7 @@ audioPlayer.addEventListener('error', async () => {
   // recovery promise is still swapping sources. The recovery owner will report only if
   // the final compatible source also fails.
   if (playbackRecoveryPromise || remoteMediaRecoveryInFlight) return;
+  if(loadingRequest)return; // The pending play() owns startup errors; ignore the old source.
   const song = currentSong;
   const canRecoverRemote = !!song?.streamUrl && !song?.filepath && !song?.fileUrl && window.echoAPI?.prepareCompatiblePlayback;
   if (canRecoverRemote) {
@@ -2254,7 +2407,8 @@ audioPlayer.addEventListener('error', async () => {
   hidePlayLoading(); updatePlayIcon(); showToast('Audio file load nahi hui. Song dobara play karo.');
 });
 audioPlayer.addEventListener('waiting', () => { if (!loadingRequest) showPlayLoading(null, 'Buffering', currentSong?.title); });
-audioPlayer.addEventListener('playing', () => { if (!loadingRequest) hidePlayLoading(); });
+audioPlayer.addEventListener('canplay',()=>playbackMark('first-playable',playRequest,currentSong?.id));
+audioPlayer.addEventListener('playing', () => { playbackMark('playing',playRequest,currentSong?.id);if (!loadingRequest) hidePlayLoading(); });
 let smartEndPrefetchSongId = '';
 audioPlayer.addEventListener('timeupdate', () => {
   const duration = Number(audioPlayer.duration || 0), current = Number(audioPlayer.currentTime || 0);
@@ -2604,12 +2758,13 @@ async function requestVisualizerLocalRecovery(reason = 'zero-pcm') {
   visualizerLocalRecoveryPending = true;
   visualizerLocalRecoverySongId = expectedId;
   try {
-    const fallback = await window.echoAPI.prepareCompatiblePlayback(normalizeSong(currentSong));
+    const fallback = await window.echoAPI.prepareCompatiblePlayback({...normalizeSong(currentSong),forceClassicPlayback:true});
     if (!fallback?.success || !fallback.fileUrl || String(currentSong?.id || '') !== expectedId) return;
     const shouldResume = !audioPlayer.paused && !audioPlayer.ended;
     const resumeAt = Math.max(0, Number(audioPlayer.currentTime || 0));
     // Switch only after the local compatibility audio is fully ready. This gives Chromium
     // an origin-safe PCM path, which makes captureStream reliable for every track.
+    configurePlaybackOrigin(fallback.fileUrl);
     audioPlayer.src = fallback.fileUrl;
     audioAnalyserMediaKey = '';
     currentSong = { ...currentSong, filepath:fallback.filepath || '', fileUrl:fallback.fileUrl, streamUrl:'' };
@@ -3218,9 +3373,103 @@ function drawNebulaDotCore(ctx, cx, cy, sphereR, audio, dpr, safeOuterRadius, qu
 }
 
 let visualizerLastPaintAt = 0;
+let lyricsRenderConstrained = false;
+const lowCostVisualizerContexts = new WeakMap();
+function lowCostVisualizerContext(context) {
+  if (lowCostVisualizerContexts.has(context)) return lowCostVisualizerContexts.get(context);
+  const methods = new Map();
+  const adapter = new Proxy(context, {
+    get(target, key) {
+      const value = target[key];
+      if (typeof value !== 'function') return value;
+      if (!methods.has(key)) methods.set(key, value.bind(target));
+      return methods.get(key);
+    },
+    set(target, key, value) {
+      target[key] = key === 'shadowBlur' ? 0 :
+        (key === 'fillStyle' || key === 'strokeStyle') ? luminousVisualizerColor(value) : value;
+      return true;
+    }
+  });
+  lowCostVisualizerContexts.set(context, adapter); return adapter;
+}
+function luminousVisualizerColor(color) {
+  if (typeof color !== 'string') return color;
+  // Restore luminous cores directly in the theme's own palette, without
+  // running brightness/contrast/drop-shadow over the entire large bitmap.
+  const cache = luminousVisualizerColor.cache || (luminousVisualizerColor.cache = new Map());
+  if (cache.has(color)) return cache.get(color);
+  const result = color.replace(/^hsla\(([-\d.]+),\s*([-\d.]+)%,\s*([-\d.]+)%,\s*([-\d.]+)\)$/,
+    (_,h,s,l,a)=>`hsla(${h},${s}%,${Math.min(90,Number(l)+4)}%,${Math.min(1,Number(a)*1.4)})`)
+    .replace(/^rgba\(([-\d.]+),\s*([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\)$/,
+    (_,r,g,b,a)=>`rgba(${[r,g,b].map(v=>Math.min(255,Math.round(Number(v)*1.16))).join(',')},${Math.min(1,Number(a)*1.4)})`);
+  // Dynamic RGB/alpha values remain exact; bound the cache instead of rounding.
+  if (cache.size >= 2048) cache.clear();
+  cache.set(color, result); return result;
+}
+const visualizerGlowBuffers = new WeakMap();
+function paintFastVisualizerGlow(context, canvas, theme = '') {
+  // Blur only a small reusable copy, then blend it around the sharp themed
+  // geometry. This replaces hundreds of per-particle blurs and full-size CSS
+  // shadow passes; theme-specific shapes and changing RGB colors are retained.
+  let entry = visualizerGlowBuffers.get(canvas);
+  if (!entry) {
+    entry = {canvas:document.createElement('canvas'),lastPaint:-Infinity,theme:''};
+    visualizerGlowBuffers.set(canvas, entry);
+  }
+  const buffer = entry.canvas;
+  const scale = Math.min(1, 192 / Math.max(canvas.width, canvas.height));
+  const w = Math.max(1, Math.round(canvas.width * scale));
+  const h = Math.max(1, Math.round(canvas.height * scale));
+  const resized = buffer.width !== w || buffer.height !== h;
+  if (resized) { buffer.width = w; buffer.height = h; }
+  const now = performance.now();
+  // Diffuse light needs fewer updates than sharp particles. Reuse it between
+  // paints; a theme/size change refreshes immediately to prevent stale colors.
+  if (resized || entry.theme !== theme || now - entry.lastPaint >= 64) {
+    const glow = buffer.getContext('2d');
+    glow.clearRect(0, 0, w, h);
+    glow.filter = 'blur(2px)';
+    glow.drawImage(canvas, 0, 0, w, h);
+    entry.lastPaint = now; entry.theme = theme;
+  }
+  context.save();
+  context.globalCompositeOperation = 'lighter';
+  context.globalAlpha = .9;
+  context.drawImage(buffer, 0, 0, canvas.width, canvas.height);
+  context.restore();
+}
 function visualizerQualityConfig() {
   const q = String(window.__dinechoVisualizerQuality || 'balanced');
-  return q === 'eco' ? {fps:30,dpr:1,detail:.60} : q === 'high' ? {fps:50,dpr:1.65,detail:.90} : q === 'ultra' ? {fps:60,dpr:2,detail:1} : {fps:40,dpr:1.35,detail:.76};
+  // The existing adaptive UI monitor owns pressure detection. Lower only the
+  // Lyrics canvas cost when balanced rendering struggles; media/lyric clocks stay unchanged.
+  const immersive = document.getElementById('immersivePlayer');
+  const mainLyrics = document.getElementById('lyricsView')?.classList.contains('active') &&
+    (!immersive || immersive.classList.contains('hidden'));
+  document.body.classList.toggle('lyrics-render-efficient', q === 'balanced' && mainLyrics);
+  if (q !== 'balanced' || !mainLyrics) lyricsRenderConstrained = false;
+  else if (document.body.classList.contains('v170-adaptive-pressure')) lyricsRenderConstrained = true;
+  document.body.classList.toggle('lyrics-render-constrained', lyricsRenderConstrained);
+  if (lyricsRenderConstrained)
+    return {fps:30,dpr:1,detail:.76,fastParticles:true};
+  return q === 'eco' ? {fps:30,dpr:1,detail:.60,fastParticles:true} : q === 'high' ? {fps:50,dpr:1.65,detail:.90} : q === 'ultra' ? {fps:60,dpr:2,detail:1} : {fps:40,dpr:mainLyrics?1:1.35,detail:.76,fastParticles:mainLyrics};
+}
+function lyricsVisualizerRect(canvas) {
+  const sizes = lyricsVisualizerRect.sizes || (lyricsVisualizerRect.sizes = new WeakMap());
+  let state = sizes.get(canvas);
+  if (!state) {
+    state = {dirty:true,rect:null}; sizes.set(canvas,state);
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(()=>{state.dirty=true;});
+      observer.observe(canvas); state.observer=observer;
+    }
+  }
+  // Measure only after actual layout changes, never on every visualizer paint.
+  // Engines without ResizeObserver keep the original live measurement path.
+  if (state.dirty || typeof ResizeObserver === 'undefined') {
+    state.rect = canvas.getBoundingClientRect(); state.dirty=false;
+  }
+  return state.rect;
 }
 function drawLyricsVisualizer() {
   visualizerFrame = 0;
@@ -3235,18 +3484,25 @@ function drawLyricsVisualizer() {
   const immersiveCanvas = document.getElementById('immersiveVisualizerCanvas');
   const immersiveOpen = !!immersiveCanvas && !!immersive && !immersive.classList.contains('hidden');
   const lyricsOpen = !!lyricsView?.classList.contains('active');
+  if (!lyricsOpen) { lyricsRenderConstrained = false; document.body.classList.remove('lyrics-render-constrained'); }
   if (!immersiveOpen && !lyricsOpen) return;
   const quality = visualizerQualityConfig();
   const paintNow = performance.now();
-  if (paintNow - visualizerLastPaintAt < (1000 / quality.fps)) return;
-  visualizerLastPaintAt = paintNow;
+  const paintInterval = 1000 / quality.fps;
+  const paintElapsed = paintNow - visualizerLastPaintAt;
+  if (paintElapsed < paintInterval - .5) return;
+  // Carry sub-frame remainder forward instead of restarting the timer at every
+  // paint. Otherwise 30/40fps targets skip unevenly against the display refresh.
+  visualizerLastPaintAt += Math.max(1, Math.floor((paintElapsed + .5) / paintInterval)) * paintInterval;
 
   // A single audio-reactive renderer follows whichever surface is visible.
   // Immersive gets priority while fullscreen so it always inherits the exact
   // selected theme visualizer without duplicating analyser/audio nodes.
   const targetCanvas = immersiveOpen ? immersiveCanvas : lyricsVisualizerCanvas;
-  const ctx = targetCanvas.getContext('2d');
-  const rect = targetCanvas.getBoundingClientRect();
+  const rawContext = targetCanvas.getContext('2d');
+  const ctx = quality.fastParticles ? lowCostVisualizerContext(rawContext) : rawContext;
+  if (quality.fastParticles) ctx.shadowBlur = 0;
+  const rect = lyricsVisualizerRect(targetCanvas);
   const dpr = Math.min(quality.dpr, window.devicePixelRatio || 1);
   const targetW = Math.max(320, Math.round(rect.width * dpr));
   const targetH = Math.max(320, Math.round(rect.height * dpr));
@@ -3261,11 +3517,11 @@ function drawLyricsVisualizer() {
   const audio = readAudioEnergy();
   const theme = document.body.dataset.theme || 'golden';
   const spec = getVisualizerThemeSpec(theme);
-  if (theme === 'dragon' && window.drawDeepEchoDragon) { window.drawDeepEchoDragon({ctx,w,h,dpr,audio,spectrumSample:visualizerSpectrumSample}); return; }
+  if (theme === 'dragon' && window.drawDeepEchoDragon) { window.drawDeepEchoDragon({ctx,w,h,dpr,audio,spectrumSample:visualizerSpectrumSample}); if (quality.fastParticles) paintFastVisualizerGlow(rawContext,targetCanvas,theme); return; }
   const selectedMode = String(window.__dinechoVisualizerMode || 'theme');
   if (selectedMode !== 'theme' && typeof window.__deepecchoDrawVisualizerMode === 'function') {
     const handled = window.__deepecchoDrawVisualizerMode({ ctx, canvas:targetCanvas, w, h, cx, cy, dpr, audio, spec, mode:selectedMode, quality, spectrumSample:visualizerSpectrumSample, waveSample:visualizerWaveSample });
-    if (handled) return;
+    if (handled) { if (quality.fastParticles) paintFastVisualizerGlow(rawContext,targetCanvas,theme); return; }
   }
   // Motion speed and vibration are derived from the music itself. No independent
   // timer oscillator drives geometry anymore.
@@ -3377,7 +3633,9 @@ function drawLyricsVisualizer() {
       const light = spec.mode === 'blood' ? 48 + depth * 24 : (spec.mode === 'love' ? 56 + depth * 24 : 55 + depth * 25);
       ctx.fillStyle = `hsla(${hue}, 100%, ${light}%, ${alpha})`;
       ctx.shadowColor = `hsla(${hue}, 100%, ${Math.min(84, light + 10)}%, ${Math.min(1,alpha * .92)})`;
-      ctx.shadowBlur = (2.5 + frequency * 10 + audio.bass * 4 + audio.beatPulse*4) * dpr * quality.detail;
+      // Per-particle software blur was dominating long Lyrics frames. Keep every
+      // themed particle and the shared core glow; omit its separate blur under pressure.
+      ctx.shadowBlur = quality.fastParticles ? 0 : (2.5 + frequency * 10 + audio.bass * 4 + audio.beatPulse*4) * dpr * quality.detail;
       const accent = spec.accent || spec.mode;
       if (accent === 'golden' || accent === 'silver') {
         const r = dotR*.82; ctx.save();ctx.translate(px,py);ctx.rotate(theta+visualizerAngle*.4);ctx.fillRect(-r/2,-r/2,r,r);ctx.restore();
@@ -3408,6 +3666,7 @@ function drawLyricsVisualizer() {
   ctx.fillStyle = core; ctx.beginPath(); ctx.arc(renderCx, renderCy, sphereR * (.90 + audio.beatPulse*.055), 0, Math.PI * 2); ctx.fill();
 
   if (spec.mode === 'blood') drawBloodVisualizerDrops(ctx, dpr, renderCx, renderCy, sphereR, audio);
+  if (quality.fastParticles) paintFastVisualizerGlow(rawContext,targetCanvas,theme);
 }
 
 function startLyricsVisualizer() {
@@ -3866,6 +4125,8 @@ let liveCursorX = -100;
 let liveCursorY = -100;
 let liveCursorRaf = 0;
 let liveCursorVisible = false;
+let liveCursorHitTarget = null;
+let liveCursorResolvedTarget = null;
 
 function setLiveCursorTheme(theme) {
   liveCursorTheme = LIVE_CURSOR_ART[theme] ? theme : 'golden';
@@ -3884,12 +4145,21 @@ function resolveLiveCursorState(target) {
 
 function paintLiveCursor() {
   liveCursorRaf = 0;
-  if (!dinechoLiveCursor) return;
-  // Small easing keeps it feeling alive without lagging behind clicks.
+  if (!isLiveCursorRenderable()) { hideLiveCursor(); return; }
+  if (!liveCursorVisible) {
+    liveCursorX = liveCursorTargetX; liveCursorY = liveCursorTargetY;
+    liveCursorVisible = true; dinechoLiveCursor.classList.add('visible');
+  }
+  if (liveCursorHitTarget !== liveCursorResolvedTarget) {
+    liveCursorResolvedTarget = liveCursorHitTarget;
+    const state = resolveLiveCursorState(liveCursorHitTarget);
+    if (dinechoLiveCursor.dataset.state !== state) dinechoLiveCursor.dataset.state = state;
+  }
+  // Position the outer layer without invalidating layout; inner theme animation stays intact.
   liveCursorX += (liveCursorTargetX - liveCursorX) * 0.72;
   liveCursorY += (liveCursorTargetY - liveCursorY) * 0.72;
-  dinechoLiveCursor.style.left = `${liveCursorX - 3}px`;
-  dinechoLiveCursor.style.top = `${liveCursorY - 3}px`;
+  dinechoLiveCursor.style.transform = `translate(${liveCursorX - 3}px, ${liveCursorY - 3}px)`;
+  setNativeCursorFallback(true);
   if (Math.abs(liveCursorTargetX - liveCursorX) > 0.12 || Math.abs(liveCursorTargetY - liveCursorY) > 0.12) {
     liveCursorRaf = requestAnimationFrame(paintLiveCursor);
   }
@@ -3913,10 +4183,14 @@ function setNativeCursorFallback(useCustomCursor) {
   // Fail-safe: never hide the Windows cursor until the custom SVG cursor is
   // actually present and visible. This prevents an invisible mouse pointer if
   // the themed cursor layer fails to initialise or gets detached.
-  document.documentElement.classList.toggle('dinecho-live-cursor-enabled', useCustomCursor === true);
+  const enabled = useCustomCursor === true;
+  if (document.documentElement.classList.contains('dinecho-live-cursor-enabled') !== enabled)
+    document.documentElement.classList.toggle('dinecho-live-cursor-enabled', enabled);
 }
 
 function hideLiveCursor() {
+  if (liveCursorRaf) cancelAnimationFrame(liveCursorRaf);
+  liveCursorRaf = 0; liveCursorHitTarget = null; liveCursorResolvedTarget = null;
   liveCursorVisible = false;
   if (dinechoLiveCursor) dinechoLiveCursor.classList.remove('visible', 'pressed');
   setNativeCursorFallback(false);
@@ -3931,27 +4205,9 @@ function initLiveCursor() {
   window.addEventListener('pointermove', (event) => {
     liveCursorTargetX = event.clientX;
     liveCursorTargetY = event.clientY;
-
-    if (!isLiveCursorRenderable()) {
-      hideLiveCursor();
-      return;
-    }
-
-    if (!liveCursorVisible) {
-      liveCursorX = event.clientX;
-      liveCursorY = event.clientY;
-      liveCursorVisible = true;
-      dinechoLiveCursor.classList.add('visible');
-    }
-    dinechoLiveCursor.dataset.state = resolveLiveCursorState(event.target);
+    liveCursorHitTarget = event.target;
+    // Coalesce high-frequency mouse events into one paint and one visibility check.
     queueLiveCursorPaint();
-
-    // Hide the native pointer only after the custom cursor has been positioned
-    // and made visible for this pointer event.
-    requestAnimationFrame(() => {
-      const ready = liveCursorVisible && isLiveCursorRenderable() && dinechoLiveCursor.classList.contains('visible');
-      setNativeCursorFallback(ready);
-    });
   }, { passive: true });
 
   window.addEventListener('pointerdown', () => {
@@ -4164,6 +4420,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateHome
       const library = await window.echoAPI.getLibrary();
       if (Array.isArray(library)) { currentLibrary = library; registerSongs(currentLibrary); syncPlayerDownloadState(); }
     } catch (_) {}
+    finally { window.deepEchoStartup?.mark('library'); }
   }, 140);
 
   // Phase 3: Home feed after add-on scripts have installed their enhanced presenter. This avoids
@@ -4487,6 +4744,7 @@ function renderRecentSearches() {
   clearRecentSearchesBtn?.classList.toggle('hidden', recent.length === 0 && !searchInput?.value?.trim());
 }
 function smartClearAllSearch() {
+  ++searchRequest; // Late results must not repopulate a cleared search.
   hideSearchProgress();
   setStored(STORAGE.recentSearches, []);
   if (searchInput) searchInput.value = '';
@@ -4499,7 +4757,9 @@ function smartClearAllSearch() {
 }
 clearRecentSearchesBtn?.addEventListener('click', smartClearAllSearch);
 function smartSetSearchType(type) {
-  smartSearchType = ['songs','artists','albums','playlists'].includes(type) ? type : 'songs'; localStorage.setItem(STORAGE.searchType, smartSearchType);
+  const nextType = ['songs','artists','albums','playlists'].includes(type) ? type : 'songs';
+  if (nextType !== smartSearchType) ++searchRequest;
+  smartSearchType = nextType; localStorage.setItem(STORAGE.searchType, smartSearchType);
   document.querySelectorAll('[data-search-type]').forEach(btn => btn.classList.toggle('active', btn.dataset.searchType === smartSearchType));
 }
 
@@ -4542,20 +4802,22 @@ runSearch = async function(mode='song', overrideQuery='') {
     resultsList.classList.remove('search-collection-grid');
     return v140RunSearchBase(mode,overrideQuery);
   }
+  const request = ++searchRequest, type = smartSearchType;
   activateTab('search'); resultsList.innerHTML='';
-  const label=smartSearchType[0].toUpperCase()+smartSearchType.slice(1); searchViewTitle.textContent=`${label}: ${q}`; searchModeText.textContent=`Browse ${smartSearchType} before playing`;
+  const label=type[0].toUpperCase()+type.slice(1); searchViewTitle.textContent=`${label}: ${q}`; searchModeText.textContent=`Browse ${type} before playing`;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) { showSearchOfflineState(); return; }
-  searchHint.textContent='Searching...'; setSearchProgress(8,`Preparing ${smartSearchType} search…`);
+  searchHint.textContent='Searching...'; setSearchProgress(8,`Preparing ${type} search…`);
   try {
     setSearchProgress(25,'Contacting music search…');
-    const query = smartSearchType==='artists' ? `${q} best songs official audio` : smartSearchType==='albums' ? `${q} full album official audio` : `${q} playlist mix songs`;
-    const results = smartSearchType==='artists' ? await window.echoAPI.searchArtist(q) : await window.echoAPI.search(query);
+    const query = type==='artists' ? `${q} best songs official audio` : type==='albums' ? `${q} full album official audio` : `${q} playlist mix songs`;
+    const results = type==='artists' ? await window.echoAPI.searchArtist(q) : await window.echoAPI.search(query);
+    if (request !== searchRequest) return;
     setSearchProgress(65,'Results received…');
     if(results?.error){if(searchLooksOffline(results.error))showSearchOfflineState();else{hideSearchProgress();searchHint.textContent='Error: '+results.error;}return;}
     if(!Array.isArray(results)||!results.length){finishSearchProgress('Search complete');searchHint.textContent='No results found.';return;}
     setSearchProgress(84,'Building collections…');
-    registerSongs(results); smartRenderSearchCollections(smartSearchType,q,results); finishSearchProgress('Search ready');
-  } catch(err){if(searchLooksOffline(err))showSearchOfflineState();else{hideSearchProgress();searchHint.textContent='Search failed: '+err.message;}}
+    registerSongs(results); smartRenderSearchCollections(type,q,results); finishSearchProgress('Search ready');
+  } catch(err){if(request !== searchRequest)return;if(searchLooksOffline(err))showSearchOfflineState();else{hideSearchProgress();searchHint.textContent='Search failed: '+err.message;}}
 };
 
 if (searchTypeTabs) searchTypeTabs.addEventListener('click', event => {
@@ -4789,17 +5051,62 @@ channelModeSelect?.addEventListener('change',()=>{localStorage.setItem(STORAGE.c
 volumeRange?.addEventListener('input',()=>requestAnimationFrame(smartApplyNormalization));
 
 let smartWarmupAudio = null;
-function smartWarmPreparedUrl(url) {
+const smartLookaheadAudio = new Map();
+function smartReleasePlaybackWarmers(keepUrl = '') {
+  const media = [];
+  if (smartWarmupAudio && smartWarmupAudio.src !== keepUrl) {
+    media.push(smartWarmupAudio); smartWarmupAudio = null;
+  }
+  for (const [url, player] of smartLookaheadAudio) {
+    if (url === keepUrl) continue;
+    media.push(player); smartLookaheadAudio.delete(url);
+  }
+  for (const player of media) {
+    if (!player) continue;
+    try { player.onerror = null; player.pause(); player.removeAttribute('src'); player.load(); } catch (_) {}
+  }
+}
+function smartWarmLookaheadUrl(url) {
+  if(!url||window.__deepecchoGameMode)return;
+  try {
+    if(smartLookaheadAudio.has(url))return;
+    const media=new Audio();media.preload='auto';media.muted=true;media.volume=0;
+    configurePlaybackOrigin(url,media);
+    media.onerror=()=>{smartLookaheadAudio.delete(url);media.removeAttribute('src');media.load();};
+    smartLookaheadAudio.set(url,media);media.src=url;media.load();
+    while(smartLookaheadAudio.size>2) {
+      const key=smartLookaheadAudio.keys().next().value,old=smartLookaheadAudio.get(key);
+      smartLookaheadAudio.delete(key);old.onerror=null;old.pause();old.removeAttribute('src');old.load();
+    }
+  }catch(_){}
+}
+function smartWarmPreparedUrl(url, song = null) {
   if (!url) return;
   try {
-    if (smartWarmupAudio?.src === url) return;
-    if (smartWarmupAudio) { smartWarmupAudio.pause(); smartWarmupAudio.removeAttribute('src'); smartWarmupAudio.load(); }
-    smartWarmupAudio = new Audio();
-    smartWarmupAudio.preload = 'auto';
-    smartWarmupAudio.muted = true;
-    smartWarmupAudio.volume = 0;
-    smartWarmupAudio.src = url;
-    smartWarmupAudio.load();
+    if (smartWarmupAudio?.src !== url) {
+      if (smartWarmupAudio) { smartWarmupAudio.onerror=null;smartWarmupAudio.pause(); smartWarmupAudio.removeAttribute('src'); smartWarmupAudio.load(); }
+      smartWarmupAudio = new Audio();
+      smartWarmupAudio.preload = 'auto';
+      smartWarmupAudio.muted = true;
+      smartWarmupAudio.volume = 0;
+      configurePlaybackOrigin(url,smartWarmupAudio);
+      smartWarmupAudio.src = url;
+      smartWarmupAudio.load();
+    }
+    if(song?.id && window.echoAPI?.prefetchSong && /^https?:/.test(url)) {
+      const player=smartWarmupAudio,owner=playRequest,quality=window.__dinechoAudioQuality||'auto';
+      player.onerror=async()=>{
+        if(player.__localPreparationStarted||player!==smartWarmupAudio||owner!==playRequest||loadingRequest||window.__deepecchoGameMode)return;
+        player.__localPreparationStarted=true;
+        try{
+          const res=await window.echoAPI.prefetchSong({...normalizeSong(song),prefetchPriority:'intent',prepareLocalPlayback:true},quality);
+          if(!res?.success||!res.streamUrl||player!==smartWarmupAudio||owner!==playRequest||loadingRequest||quality!==(window.__dinechoAudioQuality||'auto'))return;
+          smartPreparedStreamUrls.set(song.id,{url:res.streamUrl,createdAt:Date.now(),source:'prepared-local'});
+          player.onerror=null;configurePlaybackOrigin(res.streamUrl,player);player.src=res.streamUrl;player.load();
+        }catch(_){}
+      };
+      if(player.error)void player.onerror();
+    }
   } catch (_) {}
 }
 function smartUpcomingSongs(limit = 2) {
@@ -4807,6 +5114,14 @@ function smartUpcomingSongs(limit = 2) {
   for (const queued of playQueue) {
     if (queued?.id && queued.id !== currentSong?.id && !out.some(x=>x.id===queued.id)) out.push(queued);
     if (out.length >= limit) return out;
+  }
+  if (!playQueue.length && window.deepEchoSmartAutoplay?.active) {
+    for(const song of window.deepEchoSmartAutoplay.upcoming?.(limit)||[]) {
+      if(song?.id&&song.id!==currentSong?.id&&!out.some(x=>x.id===song.id))out.push(song);
+      if(out.length>=limit)return out;
+    }
+    // Discovery autoplay owns its order; don't warm unrelated search rows behind it.
+    return out;
   }
   if (activeContext?.items?.length) {
     for (let step=1; step<=Math.min(limit+1, activeContext.items.length); step++) {
@@ -4818,26 +5133,45 @@ function smartUpcomingSongs(limit = 2) {
   }
   return out;
 }
-prefetchNextQueued = async function() {
+prefetchNextQueued = async function({ audibleRequestId = null } = {}) {
   if (!window.echoAPI.prefetchSong) return;
   if (window.__deepecchoGameMode) {
     const d=Number(audioPlayer.duration||0), c=Number(audioPlayer.currentTime||0);
     if (!Number.isFinite(d) || d<=0 || d-c>24) return;
   }
   // V35 Instant Next: URL pre-resolution is useful even when the optional Gapless toggle is off.
-  // Keep one resolver only; actual media-byte warming remains tied to Gapless to avoid waste.
+  // Buffer only the imminent Next track, including when Gapless is off. This does
+  // not play or mix it; the existing player remains the only audible player.
   // One resolver at a time: parallel yt-dlp prefetch jobs were stealing CPU/network from playback.
-  const song = smartUpcomingSongs(1).find(item => item && !item.filepath && !item.fileUrl && !item.streamUrl);
-  if (!song || smartPreparedStreamUrls.has(song.id)) return;
+  const loadingBlocksWarmup = () => loadingRequest && !(audibleRequestId === playRequest && loadingRequest.requestId === audibleRequestId && currentSong?.id === loadingRequest.id);
+  if(loadingBlocksWarmup() || audioPlayer.paused || audioPlayer.ended)return;
+  const owner=playRequest;
+  const quality=window.__dinechoAudioQuality||'auto';
+  const songs=smartUpcomingSongs(window.__deepecchoGameMode?1:10).filter(item=>item&&!item.filepath&&!item.fileUrl&&!item.streamUrl);
+  if(!songs.length)return;
   const serial = ++prefetchSerial;
-  try {
-    const res = await window.echoAPI.prefetchSong({ ...normalizeSong(song), prefetchPriority:'next' }, window.__dinechoAudioQuality || 'auto');
-    if (serial !== prefetchSerial) return;
-    if (res?.success && res.streamUrl) {
-      smartPreparedStreamUrls.set(song.id,{url:res.streamUrl,createdAt:Date.now(),source:'instant-next'});
-      if (gaplessToggle?.checked) smartWarmPreparedUrl(res.streamUrl);
+  for(let index=0;index<songs.length;index++) {
+    if(serial!==prefetchSerial||owner!==playRequest||loadingBlocksWarmup()||audioPlayer.paused||audioPlayer.ended||quality!==(window.__dinechoAudioQuality||'auto'))return;
+    const song=songs[index];
+    const prepared=smartPreparedStreamUrls.get(song.id);
+    if(prepared&&Date.now()-prepared.createdAt<7*60*1000) {
+      if(index===0)smartWarmPreparedUrl(prepared.url,song);
+      else if(index<3)smartWarmLookaheadUrl(prepared.url);
+      continue;
     }
-  } catch (_) {}
+    smartPreparedStreamUrls.delete(song.id);
+    try {
+      const res=await window.echoAPI.prefetchSong({...normalizeSong(song),prefetchPriority:index===0?'next':'idle'},quality);
+      if(serial!==prefetchSerial||owner!==playRequest||loadingBlocksWarmup()||audioPlayer.paused||audioPlayer.ended||quality!==(window.__dinechoAudioQuality||'auto'))return;
+      if(!res?.success||!res.streamUrl)return;
+      smartPreparedStreamUrls.set(song.id,{url:res.streamUrl,createdAt:Date.now(),source:'instant-next'});
+      while(smartPreparedStreamUrls.size>16)smartPreparedStreamUrls.delete(smartPreparedStreamUrls.keys().next().value);
+      if(index===0)smartWarmPreparedUrl(res.streamUrl,song);
+      else if(index<3)smartWarmLookaheadUrl(res.streamUrl);
+    }catch(_){return;}
+    // Look ahead serially, at idle priority; never start ten yt-dlp processes together.
+    if(index+1<songs.length)await new Promise(resolve=>setTimeout(resolve,150));
+  }
 };
 
 const v140PlayRemoteSongBase = playRemoteSong;
@@ -4845,15 +5179,9 @@ playRemoteSong = async function(song,button) {
   song = queueSong(song);
   if (!song) return;
   const prepared = smartPreparedStreamUrls.get(song?.id);
-  if (prepared && Date.now()-prepared.createdAt < 7*60*1000) {
-    smartPreparedStreamUrls.delete(song.id);
-    if (smartWarmupAudio) { try { smartWarmupAudio.pause(); smartWarmupAudio.removeAttribute('src'); smartWarmupAudio.load(); } catch (_) {} smartWarmupAudio=null; }
-    const requestId=++playRequest; showPlayLoading(92,'Prefetched · starting',song.title);
-    if(button)button.disabled=true;
-    try { await playLocal({...queueSong(song),streamUrl:prepared.url},requestId); }
-    finally { if(button)button.disabled=false; }
-    return;
-  }
+  if(prepared&&Date.now()-prepared.createdAt<7*60*1000)playbackMark('prefetch-hit',playRequest+1,song.id);
+  // Prefetched · starting: use the main process's memory cache AND priority cancellation.
+  // The old shortcut bypassed cancellation and consumed the URL, slowing Previous reuse.
   return v140PlayRemoteSongBase(song,button);
 };
 
@@ -5057,7 +5385,7 @@ function smartRebuildImmersiveLyrics(){
   smartSyncImmersiveLyricsState(true);
 }
 function smartUpdateImmersiveKaraoke(){
-  if(!immersiveLyricsBody||!lyricLines.length)return;
+  if(!immersiveLyricsBody||!lyricLines.length || !immersivePlayer || immersivePlayer.classList.contains('hidden') || document.hidden)return;
   if(!smartWordByWordEnabled){smartRestoreLineOnlyLyrics(immersiveLyricsBody);return;}
   smartPaintWordState(immersiveLyricsBody,lyricsPlaybackClock());
 }
@@ -5285,6 +5613,10 @@ function smartPrepareKaraokeWords(){
 }
 function smartPaintWordState(root,t){
   root?.querySelectorAll('.lyric-line[data-line]').forEach((line,i)=>{
+    // Settled past/future lines need no word traversal on the 25Hz clock.
+    // Timing and source DOM are still read afresh when the active line changes.
+    const state = !smartWordByWordEnabled || !['exact','estimated'].includes(line.dataset.wordTiming) ? 'off' : i<activeLyric ? 'past' : i>activeLyric ? 'future' : 'current';
+    if (state !== 'current' && line.dataset.wordPaintState === state) return;
     const words=[...line.querySelectorAll('.karaoke-word')]; if(!words.length)return;
     if(!smartWordByWordEnabled||!['exact','estimated'].includes(line.dataset.wordTiming)){
       if(line.dataset.wordPaintState!=='off'){words.forEach(word=>word.classList.remove('lit','word-current'));line.dataset.wordPaintState='off';}
@@ -5309,12 +5641,17 @@ function smartPaintWordState(root,t){
       const nextAt=idx+1<words.length?Number(words[idx+1].dataset.wordTime):NaN;
       const effectiveEnd=Number.isFinite(end)&&end>at?end:(Number.isFinite(nextAt)&&nextAt>at?nextAt:at+.42);
       if(lit&&t<effectiveEnd+.035)current=idx;
-      word.classList.remove('word-current');
     });
-    if(current>=0&&current<words.length)words[current].classList.add('word-current');
+    words.forEach((word,index)=>word.classList.toggle('word-current',index===current));
   });
 }
-function smartUpdateKaraoke(){if(!lyricLines.length)return;const t=lyricsPlaybackClock();smartPaintWordState(lyricsBody,t);if(typeof smartUpdateImmersiveKaraoke==='function')smartUpdateImmersiveKaraoke();}
+function smartUpdateKaraoke(){
+  if(!lyricLines.length || document.hidden)return;
+  // Word DOM is presentation only. The authoritative line clock keeps running;
+  // hidden surfaces catch up from that clock immediately when opened, even paused.
+  if(document.getElementById('lyricsView')?.classList.contains('active'))smartPaintWordState(lyricsBody,lyricsPlaybackClock());
+  if(typeof smartUpdateImmersiveKaraoke==='function')smartUpdateImmersiveKaraoke();
+}
 function smartStartWordByWordTicker(){
   if(smartWordByWordTimer)return;
   // Word paint gets its own light 25fps clock. The accepted 80ms line-sync ticker remains
@@ -5529,7 +5866,7 @@ smartSyncTranslationToggle();
     if(!fileUrl||!currentSong)return false;
     const id=songIdentity(),at=Number(audioPlayer.currentTime||0),wasPlaying=!audioPlayer.paused;
     if(!karaokeRestore||karaokeRestore.songId!==id)karaokeRestore={songId:id,src:audioPlayer.currentSrc||audioPlayer.src,time:at,wasPlaying};
-    audioPlayer.src=fileUrl;audioAnalyserMediaKey='';resetVisualizerSignalState();
+    configurePlaybackOrigin(fileUrl);audioPlayer.src=fileUrl;audioAnalyserMediaKey='';resetVisualizerSignalState();
     const seek=()=>{try{audioPlayer.currentTime=Math.min(at,Math.max(0,(audioPlayer.duration||at+1)-.1));if(wasPlaying)audioPlayer.play().catch(()=>{});resumeAudioAnalyser(true);syncLyrics(true);}catch(_){}};
     audioPlayer.addEventListener('loadedmetadata',seek,{once:true});
     document.body.dataset.karaokeAudio=mode||'vocal-low'; return true;
@@ -5538,7 +5875,7 @@ smartSyncTranslationToggle();
     const saved=karaokeRestore;karaokeRestore=null;delete document.body.dataset.karaokeAudio;
     if(!saved||saved.songId!==songIdentity()||!saved.src)return false;
     const at=Number(audioPlayer.currentTime||saved.time||0),wasPlaying=!audioPlayer.paused;
-    audioPlayer.src=saved.src;audioAnalyserMediaKey='';resetVisualizerSignalState();
+    configurePlaybackOrigin(saved.src);audioPlayer.src=saved.src;audioAnalyserMediaKey='';resetVisualizerSignalState();
     audioPlayer.addEventListener('loadedmetadata',()=>{try{audioPlayer.currentTime=Math.min(at,Math.max(0,(audioPlayer.duration||at+1)-.1));if(wasPlaying)audioPlayer.play().catch(()=>{});resumeAudioAnalyser(true);syncLyrics(true);}catch(_){}},{once:true});
     return true;
   }

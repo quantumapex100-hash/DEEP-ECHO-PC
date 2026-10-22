@@ -55,7 +55,7 @@ test('song hover and lyric text use custom cursor states with native fail-safe f
   assert.match(renderer, /function isLiveCursorRenderable\(\)/);
   assert.match(renderer, /function setNativeCursorFallback\(useCustomCursor\)/);
   assert.match(renderer, /setNativeCursorFallback\(false\);[\s\S]*setLiveCursorTheme/);
-  assert.match(renderer, /requestAnimationFrame\(\(\) => \{[\s\S]*setNativeCursorFallback\(ready\)/);
+  assert.match(renderer, /function paintLiveCursor\(\)[\s\S]*isLiveCursorRenderable\(\)[\s\S]*style\.transform[\s\S]*setNativeCursorFallback\(true\)/);
   assert.match(renderer, /function hideLiveCursor\(\)[\s\S]*setNativeCursorFallback\(false\)/);
   assert.match(renderer, /#lyricsBody, \.lyric-line, \.lyrics-heading/);
   assert.match(renderer, /\.song-card, \.song-row/);

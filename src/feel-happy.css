@@ -1,0 +1,62 @@
+.main-col:has(#feelHappyView.active)>.topbar{display:none!important}
+.main-col:has(#feelHappyView.active)>.player-bar{display:none!important}
+body:has(#feelHappyView.active) .lyrics-sync-float{display:none!important}
+main:has(>#feelHappyView.active){position:relative;padding:0!important;overflow:hidden!important;background:#88bce0!important;isolation:isolate}
+#feelHappyView.active{position:absolute;inset:0;display:block;animation:none;background:#88bce0;z-index:1}
+#feelHappyView>.view-title-row{display:none}
+.happy-scene{position:relative;isolation:isolate;overflow:hidden;border-radius:0;min-height:0;height:100%;width:100%;background:#85bee4;color:#183821;border:0;box-shadow:none;touch-action:pan-y}
+#happyCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.happy-sky-lyrics{position:absolute;top:19%;left:10%;width:80%;text-align:center;pointer-events:none;color:rgba(160,101,16,.85);text-shadow:0 0 12px #ffe5a280,0 0 30px #eab94d60;--happy-lyric-colour:rgba(170,107,20,.85)}
+.calm-transport{position:absolute;top:2%;left:50%;transform:translateX(-50%);width:min(400px,86%);color:#795014;--calm-glow:#ffe3a055;text-align:center}
+.happy-scene[data-time="night"] .calm-transport{color:#9edfff;--calm-glow:#42aaff55}
+.happy-scene[data-time="sunset"] .calm-transport{color:#ffe1b0;--calm-glow:#ffc87944}
+.calm-transport-panel{padding:5px 15px 8px;border:1px solid currentColor;border-radius:22px;background:transparent;box-shadow:0 0 18px var(--calm-glow);opacity:.88}
+.calm-transport-panel[hidden]{display:none}
+.calm-transport-buttons{display:flex;justify-content:center;align-items:center;gap:15px}
+.calm-transport button{color:inherit;background:transparent;border:0;cursor:pointer;text-shadow:0 0 12px var(--calm-glow);padding:5px 8px;min-width:32px;min-height:32px;font-size:15px}
+.calm-transport #calmPlayBtn{font-size:21px;min-width:42px}
+.calm-transport button svg{width:18px;height:18px;fill:currentColor;vertical-align:middle;filter:drop-shadow(0 0 5px var(--calm-glow))}
+.calm-progress{display:flex;align-items:center;gap:9px;font-size:10px;font-variant-numeric:tabular-nums}
+.calm-progress input{width:100%;min-width:0;height:12px;accent-color:currentColor;cursor:pointer;background:transparent}
+.calm-progress input{-webkit-appearance:none;appearance:none;color:inherit;border:0;margin:0}
+.calm-progress input::-webkit-slider-runnable-track{height:3px;border-radius:5px;background:linear-gradient(to right,currentColor var(--calm-progress,0%),color-mix(in srgb,currentColor 20%,transparent) var(--calm-progress,0%))}
+.calm-progress input::-webkit-slider-thumb{-webkit-appearance:none;width:8px;height:8px;border-radius:50%;background:currentColor;margin-top:-2.5px;box-shadow:0 0 8px var(--calm-glow)}
+.calm-progress input:disabled{opacity:.35;cursor:default}
+.calm-transport .calm-transport-toggle{display:block;margin:2px auto 0;padding:0 12px;font-size:20px;line-height:24px;border:1px solid currentColor;border-radius:18px;opacity:.7}
+.calm-transport button:focus-visible,.calm-progress input:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media(max-height:560px){.calm-transport{top:1%;width:min(340px,85%)}.calm-transport-panel{padding-block:0 4px}.calm-transport button{min-height:27px}.happy-sky-lyrics{top:27%}.happy-sky-lyrics p{margin:4px 0;font-size:clamp(20px,2.6vw,32px)}}
+.happy-sky-lyrics[hidden]{display:none}
+.happy-sky-lyrics p{margin:10px 0;font-family:"Palatino Linotype","Book Antiqua",Georgia,serif;font-style:italic;font-size:clamp(22px,3.2vw,42px);font-weight:500;line-height:1.35;text-wrap:balance;animation:happy-lyric-arrive .45s ease both;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.happy-sky-lyrics .happy-sky-current{color:var(--happy-lyric-colour);letter-spacing:.015em}
+.happy-sky-lyrics .happy-sky-context{font-size:clamp(13px,1.5vw,19px);opacity:.48;min-height:1.35em;margin:8px 0;-webkit-line-clamp:1}
+.happy-scene[data-time="night"] .happy-sky-lyrics{color:rgba(99,205,255,.82);--happy-lyric-colour:rgba(121,220,255,.87);text-shadow:0 0 9px #39b9ffb0,0 0 25px #008dff80,0 0 45px #0666d460}
+.happy-scene[data-time="sunset"] .happy-sky-lyrics{color:rgba(255,216,146,.82);--happy-lyric-colour:rgba(255,224,171,.88);text-shadow:0 0 15px #fbb94a90,0 2px 18px #38244688}
+@keyframes happy-lyric-arrive{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.happy-sky-lyrics p{animation:none}}
+.happy-heading{position:absolute;top:8%;left:0;width:100%;text-align:center;pointer-events:none;text-shadow:0 2px 15px #ffffff55}
+.happy-eyebrow{font-size:10px;letter-spacing:3px;font-weight:700;opacity:.65}
+.happy-heading h1{font-size:clamp(38px,5vw,64px);font-weight:850;letter-spacing:-3px;line-height:1.05;margin:12px 0 8px;color:inherit}
+.happy-heading p{font-size:14px;color:inherit;margin:0 0 18px;opacity:.8}
+.happy-heading button{pointer-events:auto;border:1px solid #ffffff65;border-radius:30px;padding:11px 22px;background:#234a2c;color:#f5ffe6;box-shadow:0 5px 20px #19371e30;font-weight:700;cursor:pointer}
+.happy-controls{position:absolute;bottom:48px;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:5px;border-radius:28px;background:#10221980;border:1px solid #ffffff40;backdrop-filter:blur(12px);max-width:95%}
+.happy-controls button{border:0;background:transparent;color:#fff;padding:8px 13px;border-radius:22px;cursor:pointer;font-size:12px;white-space:nowrap}
+.happy-controls button[aria-pressed="true"]{background:#eff9db;color:#23402c}
+.happy-scene button:focus-visible{outline:3px solid #f2d884;outline-offset:3px}
+.happy-hint{position:absolute;bottom:14px;left:0;width:100%;text-align:center;color:#fff;font-size:11px;text-shadow:0 1px 6px #000;margin:0;pointer-events:none}
+.happy-scene[data-time="night"] .happy-heading{color:#eef2ff;text-shadow:0 2px 20px #111b45}
+.happy-scene[data-time="sunset"] .happy-heading{color:#43293c}
+@media(max-width:650px){.happy-controls button{padding:8px 9px}.happy-heading h1{letter-spacing:-2px}}
+@media(max-height:560px){.happy-eyebrow{display:none}.happy-heading{top:4%}.happy-heading h1{font-size:38px;margin-top:0}.happy-heading p{margin-bottom:10px}.happy-heading button{padding:8px 18px}.happy-controls{bottom:34px}.happy-hint{bottom:8px}}
+
+/* Calm-only layout changes automatically release the normal app layout on exit. */
+body:has(#feelHappyView.active):has(#happyScene[data-sidebar-hidden="true"]) .sidebar{display:none!important}
+.happy-scene[data-sidebar-hidden="true"] .calm-transport{width:min(560px,86%)}
+.happy-scene[data-sidebar-hidden="true"] .happy-sky-lyrics{left:7%;width:86%}
+.calm-sidebar-toggle{position:absolute;z-index:3;left:8px;top:50%;transform:translateY(-50%);border:1px solid currentColor;border-radius:20px;background:transparent;color:#795014;width:28px;height:44px;font-size:25px;cursor:pointer;opacity:.8;text-shadow:0 0 10px #ffe3a0}
+.happy-scene[data-time="night"] .calm-sidebar-toggle{color:#9edfff;text-shadow:0 0 12px #42aaff}
+.happy-scene[data-time="sunset"] .calm-sidebar-toggle{color:#ffe1b0}
+.calm-song-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.5;min-height:18px;padding:1px 8px 2px;text-shadow:0 0 8px var(--calm-glow)}
+.happy-sky-lyrics{transition:top .35s ease}
+.happy-scene[data-transport-hidden="true"] .happy-sky-lyrics{top:10%}
+@media(max-height:560px){.happy-scene[data-transport-hidden="true"] .happy-sky-lyrics{top:11%}.happy-scene:not([data-transport-hidden="true"]) .happy-sky-lyrics{top:30%}}
+@media(prefers-reduced-motion:reduce){.happy-sky-lyrics{transition:none}}

@@ -1,3 +1,5 @@
+// 22 October: authorized single-pass search and same-extraction audio recovery; dedicated behavioural regressions cover both.
+// Accepted 17 October Next improvement: reserve one relevant known candidate and preserve it during radio discovery; lyrics hashes unchanged.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -12,9 +14,9 @@ const session = read('src/v2314-session-mixes-stats.js');
 const html = read('src/index.html');
 const v200 = read('src/v200.js');
 
-test('V42 uses the requested 2.6.6 visible version label and premium Red Nebulae palette', () => {
-  assert.match(html, /v228-test-label">2\.6\.6</);
-  assert.match(v200, /DEEPECHO_RELEASE_VERSION='2\.6\.6'/);
+test('V42 uses the requested 2.6.7 visible version label and premium Red Nebulae palette', () => {
+  assert.match(html, /v228-test-label">2\.6\.7</);
+  assert.match(v200, /DEEPECHO_RELEASE_VERSION='2\.6\.7'/);
   assert.match(v200, /v42Label\.textContent=DEEPECHO_RELEASE_VERSION/);
   const start = renderer.indexOf('function drawNebulaDotCore');
   const end = renderer.indexOf('let visualizerLastPaintAt', start);
@@ -40,21 +42,26 @@ test('V42 warms more likely Home and Recent clicks while Search rolling warmup s
   assert.match(renderer, /warmVisibleCards\(songs\.slice\(2\), 2\)/);
   assert.match(renderer, /warmVisibleCards\(recent, 3\)/);
   assert.match(renderer, /singles\.slice\(0, 2\)/);
-  assert.match(renderer, /singles\.slice\(2, 6\)/);
-  assert.match(renderer, /priorityName === 'next'|prefetchPriority:'next'/);
+  assert.match(renderer, /singles\.slice\(0, 2\)/);
+  assert.match(renderer, /prefetchPriority:index===0\?'next':'idle'/);
 });
 
-test('V42 still consumes completed prepared URLs directly on Play', () => {
+test('Prepared Play uses existing main cache while cancelling stale work', () => {
   assert.match(renderer, /const prepared = smartPreparedStreamUrls\.get\(song\?\.id\)/);
   assert.match(renderer, /Prefetched · starting/);
-  assert.match(renderer, /playLocal\(\{\.\.\.queueSong\(song\),streamUrl:prepared\.url\},requestId\)/);
+  assert.match(renderer, /return v140PlayRemoteSongBase\(song,button\)/);
 });
 
 test('V42 preserves protected playback process, Exact Lyrics and Smart Autoplay files', () => {
-  assert.equal(sha('main.js'), 'b9e0b10b42a860e835dd6ee78a22a258727d7f7ab0836be23d3a19f168452a89');
+  // Main accepts the 17 October availability-aware playback client and prepared-audio reuse; protected lyric hashes below remain unchanged.
+  assert.equal(sha('main.js'), '8368d26c12596563249ebfb465afe8b0c1ff0df08753be98cc35b014de0cf7d9');
   assert.equal(sha('preload.js'), '43624209119d865ccd2fcca44dda7b1eb49357933301d9fda655858eed979e83');
   assert.equal(sha('lib/exact-lyrics.js'), 'f84bd963a4b156707c4ba637ec3b01d19177fce5fa5f04853c2514c2bec9c6f4');
   assert.equal(sha('lib/youtube-captions.js'), 'dc89d203b626f2dfa5b9a0e147268b21672a3ab53aa2a3e190e2fa26676e3339');
   assert.equal(sha('lib/lyrics-timeline.js'), '7e1447ede0b9d5981b9d1b4e857e2dccf710677595c26bdda0bd1cb477317017');
-  assert.equal(sha('src/v238-smart-autoplay.js'), '200514239517b4a4238c2b9dc3e497f17ab63bd1784e6d64c52e076072433048');
+  assert.equal(sha('src/v238-smart-autoplay.js'), 'e0c485bbd0868c2825c2520325e19f75ba7997ccd11ea3aa8464fef2a3738277');
 });
+
+
+
+

@@ -29,10 +29,10 @@ test('Word by Word OFF restores clean whole-line DOM instead of dim karaoke span
 
 test('visualizer self-heals silent remote PCM by materializing the already-supported compatibility source',()=>{
   assert.match(renderer,/async function requestVisualizerLocalRecovery/);
-  assert.match(renderer,/window\.echoAPI\.prepareCompatiblePlayback\(normalizeSong\(currentSong\)\)/);
+  assert.match(renderer,/window\.echoAPI\.prepareCompatiblePlayback\(\{\.\.\.normalizeSong\(currentSong\),forceClassicPlayback:true\}\)/);
   assert.match(renderer,/visualizerReconnectAttempts >= 2/);
   assert.match(renderer,/local PCM recovery active/);
-  assert.match(renderer,/await resumeAudioAnalyser\(true\);\r?\n\s*startLyricsVisualizer\(\);\r?\n\s*startAudioEnergyTicker\(\);/);
+  assert.match(renderer,/await resumeAudioAnalyser\(true\);\r?\n\s*if \(requestId !== playRequest\) return;\r?\n\s*startLyricsVisualizer\(\);\r?\n\s*startAudioEnergyTicker\(\);/);
 });
 
 test('automatic game mode no longer freezes visualizer merely because the app loses focus',()=>{

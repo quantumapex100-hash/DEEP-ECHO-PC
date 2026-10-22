@@ -62,14 +62,19 @@
       return uniqueSongs([...(cached?.songs || []), ...ranked, ...likedSongs(), ...recentSongs()]);
     } catch (_) { return uniqueSongs([...likedSongs(), ...recentSongs()]); }
   };
+  const homeCardSnapshots = new WeakMap();
   const makeCards = (grid, songs, type, label, limit = 6) => {
     if (!grid || typeof buildSongCard !== 'function' || typeof makeContext !== 'function') return;
     const list = uniqueSongs(songs).slice(0, limit);
+    const key = JSON.stringify(list), previous = homeCardSnapshots.get(grid);
+    if (previous?.key === key && previous.nodes.length === grid.children.length &&
+        previous.nodes.every((node, index) => node === grid.children[index])) return;
     grid.replaceChildren();
     const hint = grid.parentElement?.querySelector('.section-hint');
     if (hint) hint.style.display = list.length ? 'none' : 'block';
     const ctx = makeContext(list, type, label, type);
     list.forEach(song => grid.appendChild(buildSongCard(song, ctx)));
+    homeCardSnapshots.set(grid, {key, nodes: [...grid.children]});
   };
 
   // ---------- HOME 2.0 ----------

@@ -70,7 +70,7 @@ test('deferred Home card warmup drops stale candidates after a new search', () =
   const source=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8');
   const start=source.indexOf('function warmVisibleCards('), end=source.indexOf('async function pumpSearchInstantWarm',start);
   let task, delay, warmed=[];
-  const ctx={searchRequest:1, document:{hidden:false}, searchWarmCandidate:()=>true,
+  const ctx={loadingRequest:null,searchRequest:1, document:{hidden:false}, searchWarmCandidate:()=>true,
     smartRunIdle:(fn,ms)=>{task=fn;delay=ms;}, enqueueSearchInstantWarm:(...args)=>warmed.push(args)};
   vm.createContext(ctx); vm.runInContext(source.slice(start,end),ctx);
   ctx.warmVisibleCards([{id:'a'},{id:'b'}],1);

@@ -301,9 +301,30 @@
     list.forEach(song => grid.appendChild(buildSongCard(song, ctx)));
   }
 
-  async function enhancedHomeLoad236(force = false) {
+  // Re-entering Home should retain its cards. Rebuild only when feed/taste changes.
+  let homePresentationKey236 = '', homeLoadPending236 = null;
+  function homePresentationKey() {
+    try {
+      const keys = ['liked','recent','recommendations','preferenceSignals','playStats'];
+      return JSON.stringify([feedAt236, Math.floor(Date.now() / (6 * HOUR)),
+        ...keys.map(key => localStorage.getItem(STORAGE[key]))]);
+    } catch (_) { return ''; }
+  }
+  function enhancedHomeLoad236(force = false) {
+    if (homeLoadPending236) {
+      return force ? homeLoadPending236.then(() => enhancedHomeLoad236(true)) : homeLoadPending236;
+    }
+    homeLoadPending236 = presentHome236(force).finally(() => { homeLoadPending236 = null; });
+    return homeLoadPending236;
+  }
+  async function presentHome236(force = false) {
     if (!force) {
-      try { if (homeLoaded && feed236 && Date.now() - feedAt236 < 20 * 60 * 1000) { renderPopularArtists236(feed236); await renderNewReleases236(feed236); enhanceShelves236(); return; } } catch (_) {}
+      try { if (homeLoaded && feed236 && Date.now() - feedAt236 < 20 * 60 * 1000) {
+        const key = homePresentationKey();
+        if (key && key === homePresentationKey236) return;
+        renderPopularArtists236(feed236); await renderNewReleases236(feed236);
+        homePresentationKey236 = key; enhanceShelves236(); return;
+      } } catch (_) {}
     }
     if ($('topHitsHint')) $('topHitsHint').textContent = 'Loading top hits...';
     if ($('topArtistsHint')) $('topArtistsHint').textContent = 'Loading artist playlists...';
@@ -318,8 +339,10 @@
       const artistFeed = uniqueSongs236([...tasteSongs236(), ...(data.topArtistSongs || [])]);
       renderArtistPlaylistSection($('topArtistsGrid'), $('topArtistsHint'), artistFeed, 'No artist playlists found.');
     } catch (_) {}
+    const presentationKey = homePresentationKey();
     renderPopularArtists236(data);
     await renderNewReleases236(data);
+    homePresentationKey236 = presentationKey;
     try { homeLoaded = true; } catch (_) {}
     renderSearchLanding236();
     renderPlaylistRecommendations236();
@@ -668,10 +691,19 @@
   $('clearRecentSearchesBtn')?.addEventListener('click', () => setTimeout(renderSearchLanding236, 20));
   document.querySelector('[data-tab="search"]')?.addEventListener('click', () => setTimeout(renderSearchLanding236, 50));
   document.querySelector('[data-tab="playlists"]')?.addEventListener('click', () => setTimeout(renderPlaylistRecommendations236, 60));
-  document.querySelector('[data-tab="home"]')?.addEventListener('click', () => setTimeout(() => enhancedHomeLoad236(false), 50));
+  // activateTab already invokes loadHomeContent for every Home entry.
   $('backToPlaylistsBtn')?.addEventListener('click', () => setTimeout(renderPlaylistRecommendations236, 30));
 
-  const shelfObserver236 = new MutationObserver(() => enhanceShelves236());
+  // Search progress/badges/rows are not shelves; avoid scanning all three views for them.
+  const shelfSelector236 = '.home-section, .search236-shelf-section, .playlist236-recommendations';
+  function affectsShelf236(mutation) {
+    if (mutation.target instanceof Element && mutation.target.closest(shelfSelector236)) return true;
+    return [...mutation.addedNodes, ...mutation.removedNodes].some(node => node instanceof Element &&
+      (node.matches(shelfSelector236) || node.querySelector(shelfSelector236)));
+  }
+  const shelfObserver236 = new MutationObserver(mutations => {
+    if (mutations.some(affectsShelf236)) enhanceShelves236();
+  });
   shelfObserver236.observe(homeView236, { childList: true, subtree: true });
   shelfObserver236.observe(searchView236, { childList: true, subtree: true });
   shelfObserver236.observe(playlistsView236, { childList: true, subtree: true });

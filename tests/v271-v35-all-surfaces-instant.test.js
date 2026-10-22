@@ -45,7 +45,7 @@ test('V35 all-surfaces preserves direct local playback for Downloads', () => {
   const start = renderer.indexOf('async function playSongObject');
   const end = renderer.indexOf('async function playContextAt', start);
   const block = renderer.slice(start, end);
-  assert.match(block, /if \(item\.filepath \|\| item\.fileUrl \|\| item\.streamUrl\) await playLocal\(item\);\s*else await playRemoteSong/);
+  assert.match(block, /const pending=\(item\.filepath \|\| item\.fileUrl\)\?playLocal\(item\):playRemoteSong\(item,button\)/);
   assert.doesNotMatch(block, /prefetchSong\(item/);
 });
 

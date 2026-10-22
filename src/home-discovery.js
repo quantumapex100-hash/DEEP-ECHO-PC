@@ -107,6 +107,7 @@
     drawer.scrollIntoView({ behavior:'smooth', block:'start' });
   }
   async function openCollection(title, query, playNow = false) {
+    const intent = typeof navigationIntent === 'number' ? navigationIntent : 0;
     const serial = ++openSerial; revealDrawer(title); drawerRows.replaceChildren();
     drawerActions.querySelectorAll('.collection-play').forEach(el => el.remove());
     drawerStatus.textContent = 'Finding songs…';
@@ -121,7 +122,7 @@
       }
       if (serial !== openSerial) return;
       showSongs(title, songs, `all-time:${query}`);
-      if (playNow) playSongCollection(songs, title, { type:'home-collection', key:`all-time:${query}` });
+      if (playNow && (typeof navigationIntent !== 'number' || navigationIntent === intent)) playSongCollection(songs, title, { type:'home-collection', key:`all-time:${query}` });
     } catch (error) {
       if (serial === openSerial) drawerStatus.textContent = `Could not load: ${error.message}`;
     }

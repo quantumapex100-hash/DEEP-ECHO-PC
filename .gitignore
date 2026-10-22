@@ -7,3 +7,4 @@ build-output.log
 Thumbs.db
 .release-work/
 .release-validation/
+.startup-diagnostic/

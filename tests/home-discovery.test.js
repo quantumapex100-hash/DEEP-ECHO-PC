@@ -53,3 +53,13 @@ test('slow collection response cannot overwrite a newer Open request',async()=>{
   assert.match(h.document.querySelector('#homeDiscoveryPlaylist').textContent,/Bollywood result/);
   assert.doesNotMatch(h.document.querySelector('#homeDiscoveryPlaylist').textContent,/Old English result/);
 });
+
+test('slow Home collection Play cannot override a newer explicit song selection or Next tap',async()=>{
+  let finish;const h=setup({search:()=>new Promise(resolve=>finish=resolve)});
+  h.ctx.navigationIntent=1;
+  h.document.querySelectorAll('#homeAllTimeCollections .playlist-card button')[1].click();
+  h.ctx.navigationIntent++;
+  finish([{id:'late',title:'Late collection'}]);await tick();
+  assert.equal(h.played.length,0);
+  assert.match(h.document.querySelector('#homeDiscoveryPlaylist').textContent,/Late collection/);
+});

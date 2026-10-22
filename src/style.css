@@ -823,7 +823,7 @@ body[data-theme="love"] .lyrics-visualizer-core { background:radial-gradient(cir
    Startup/focus/detach states deliberately fall back to the normal system cursor. */
 html.dinecho-live-cursor-enabled, html.dinecho-live-cursor-enabled * { cursor: none !important; }
 .dinecho-live-cursor {
-  position: fixed; left: -100px; top: -100px; width: 42px; height: 42px; z-index: 2147483647;
+  position: fixed; left: 0; top: 0; transform: translate(-100px, -100px); will-change: transform; width: 42px; height: 42px; z-index: 2147483647;
   pointer-events: none; opacity: 0; transition: opacity .12s ease;
   background: transparent !important; border: 0 !important; outline: 0 !important; box-shadow: none !important;
   filter: none !important; -webkit-filter: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
@@ -980,7 +980,8 @@ body.lyrics-theme-fx[data-theme="love"] .lyric-line.current { color: #ffd6ef; ba
 .dinecho-live-cursor[data-state="text"] .dinecho-live-cursor-art { transform: scale(.9) rotate(2deg); }
 .dinecho-live-cursor.pressed .dinecho-live-cursor-art { transform: scale(.8) rotate(-4deg) !important; }
 @keyframes cursorEnergyRun { to { stroke-dashoffset: -20; } }
-@keyframes cursorShapePulse { 0%,100% { opacity:.12; stroke-width:1.0; } 50% { opacity:.24; stroke-width:1.65; } }
+/* Keep the visible pulse without changing SVG stroke geometry on every frame. */
+@keyframes cursorShapePulse { 0%,100% { opacity:.12; } 50% { opacity:.24; } }
 @keyframes cursorStreakPulse { 0%,100% { opacity:.58; } 50% { opacity:1; } }
 @media (prefers-reduced-motion: reduce) {
   .dinecho-live-cursor .cursor-live-streak,

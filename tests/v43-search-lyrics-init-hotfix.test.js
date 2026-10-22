@@ -1,3 +1,5 @@
+// 22 October: authorized single-pass search and same-extraction audio recovery; dedicated behavioural regressions cover both.
+// Accepted 17 October Next improvement: reserve one relevant known candidate and preserve it during radio discovery; lyrics hashes unchanged.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -31,7 +33,7 @@ test('V43 preserves V42 fast resume and Home/Search warmup instead of disabling 
   assert.match(session, /setTimeout\(\(\) => \{ try \{ restoreSession\(\); \} catch \(_\) \{\} \}, 460\)/);
   assert.match(renderer, /warmVisibleCards\(recent, 3\)/);
   assert.match(renderer, /warmVisibleCards\(songs\.slice\(2\), 2\)/);
-  assert.match(renderer, /singles\.slice\(2, 6\)/);
+  assert.match(renderer, /singles\.slice\(0, 2\)/);
 });
 
 test('V43 preserves premium Red Nebulae palette and visualizer implementation', () => {
@@ -42,10 +44,14 @@ test('V43 preserves premium Red Nebulae palette and visualizer implementation', 
 });
 
 test('V43 keeps protected playback, lyrics and Smart Autoplay engines byte-identical', () => {
-  assert.equal(sha('main.js'), 'b9e0b10b42a860e835dd6ee78a22a258727d7f7ab0836be23d3a19f168452a89');
+  // Main accepts the 17 October availability-aware playback client and prepared-audio reuse; protected lyric hashes below remain unchanged.
+  assert.equal(sha('main.js'), '8368d26c12596563249ebfb465afe8b0c1ff0df08753be98cc35b014de0cf7d9');
   assert.equal(sha('preload.js'), '43624209119d865ccd2fcca44dda7b1eb49357933301d9fda655858eed979e83');
   assert.equal(sha('lib/exact-lyrics.js'), 'f84bd963a4b156707c4ba637ec3b01d19177fce5fa5f04853c2514c2bec9c6f4');
   assert.equal(sha('lib/youtube-captions.js'), 'dc89d203b626f2dfa5b9a0e147268b21672a3ab53aa2a3e190e2fa26676e3339');
   assert.equal(sha('lib/lyrics-timeline.js'), '7e1447ede0b9d5981b9d1b4e857e2dccf710677595c26bdda0bd1cb477317017');
-  assert.equal(sha('src/v238-smart-autoplay.js'), '200514239517b4a4238c2b9dc3e497f17ab63bd1784e6d64c52e076072433048');
+  assert.equal(sha('src/v238-smart-autoplay.js'), 'e0c485bbd0868c2825c2520325e19f75ba7997ccd11ea3aa8464fef2a3738277');
 });
+
+
+

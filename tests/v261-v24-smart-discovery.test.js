@@ -44,7 +44,7 @@ test('V24 Autoplay and Home recommendations enforce stronger diversity and varia
   const js=fs.readFileSync('src/v238-smart-autoplay.js','utf8');
   assert.match(js,/vibeAffinity\(seed, song\) \* 3\.1/);
   assert.match(js,/chosen\.length < 8 && sameArtistChosen >= 1/);
-  assert.match(js,/state\.candidates\.slice\(0, 2\)/);
+  assert.match(js,/state\.candidates\.slice\(0, 1\)/);
   assert.match(renderer,/SMART_DISCOVERY_MOODS/);
   assert.match(renderer,/smartRecommendationCandidatePenalty/);
   assert.match(renderer,/smartDiverseRecommendationList/);

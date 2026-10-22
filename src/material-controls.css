@@ -1,0 +1,22 @@
+/* Scoped skins: native controls keep their labels, focus, states and click handlers. */
+body{--de-control-rgb:239 181 64;--de-control-rim:255 237 175;--de-control-ink:#291a06}
+.sidebar.de-glass-nav{position:relative;isolation:isolate}
+.de-glass-nav>.side-nav,.de-glass-nav>#artistSearchBtn{position:relative;z-index:1}
+.de-glass-nav .nav-item,.de-glass-nav #artistSearchBtn{transition:color .18s ease,background .18s ease}
+body .de-glass-nav .nav-item.active{background:transparent!important;box-shadow:none!important}
+.de-glass-nav .nav-item:focus-visible,.de-glass-nav #artistSearchBtn:focus-visible{outline:2px solid rgb(var(--de-control-rim));outline-offset:2px}
+.de-glass-lens{position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;z-index:0;overflow:hidden;transform-origin:center;contain:layout paint style;border:1px solid rgb(var(--de-control-rim)/.48);background:linear-gradient(118deg,rgb(var(--de-control-rim)/.47),rgb(var(--de-control-rgb)/.14) 18%,rgb(var(--de-control-rgb)/.04) 57%,rgb(var(--de-control-rgb)/.3) 85%,rgb(var(--de-control-rim)/.55));box-shadow:inset 1px 0 1px #ffffffa1,inset -1px 0 2px rgb(var(--de-control-rim)/.5),0 4px 12px #0003;backdrop-filter:blur(5px);will-change:transform}
+.de-glass-core{position:absolute;inset:5px 7px;border-radius:17px;background:radial-gradient(ellipse at 65% 20%,rgb(var(--de-control-rgb)/.22),rgb(var(--de-control-rgb)/.07) 65%);box-shadow:inset 0 3px 7px #ffffff0d,inset 0 -3px 7px #0004}
+.de-glass-lens:before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(112deg,#ffffff70,transparent 16%,transparent 76%,rgb(var(--de-control-rim)/.3));box-shadow:inset 0 1px 1px #ffffff80}
+.de-glass-top,.de-glass-bottom{position:absolute;left:24%;right:24%;height:3px;border-radius:50%;background:linear-gradient(rgb(var(--de-control-rim)/.8),rgb(var(--de-control-rgb)/.28));box-shadow:0 1px 1px #ffffff30}
+.de-glass-top{top:1px}.de-glass-bottom{bottom:1px;transform:rotate(180deg)}
+body[data-theme="space"] .de-glass-core{background:radial-gradient(ellipse at 70% 10%,#a77aff55,transparent),linear-gradient(120deg,#316ca655,#342d6255)}
+body[data-theme="rgb"] .de-glass-core{background:linear-gradient(110deg,#ff4b8733,#705fff33,#45ffc533)}
+body[data-theme="toxic"] .de-glass-lens{box-shadow:inset 1px 0 1px #eaffc399,0 0 15px #3cff591a}
+body[data-theme="light"] .de-glass-lens,body[data-theme="silver"] .de-glass-lens{background:linear-gradient(120deg,#fff9,rgb(var(--de-control-rgb)/.26),#fff8)}
+
+body[data-theme] .de-glass-nav #artistSearchBtn.de-glass-selected{background:transparent!important;box-shadow:none!important}
+
+/* Keep offscreen Home shelves out of the entry frame; retain their measured size. */
+#homeView > .home-section { content-visibility:auto; contain-intrinsic-size:auto 320px; }
+@media(prefers-reduced-motion:reduce){.de-glass-lens{will-change:auto}}

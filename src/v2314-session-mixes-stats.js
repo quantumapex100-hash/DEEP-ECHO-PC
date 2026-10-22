@@ -108,6 +108,7 @@
   }
 
   async function restoreSession() {
+    try {
     if (!resumeEnabled()) return;
     // V42 starts resolving the saved remote song before the resume playback request.
     // If the warmup is still running, the existing resolver single-flight path joins it.
@@ -157,6 +158,7 @@
       else audioPlayer.addEventListener('loadedmetadata', seekAndState, { once:true });
       try { showToast(`Session restored · ${song.title || 'last song'}`); } catch (_) {}
     } catch (_) {}
+    } finally { window.deepEchoStartup?.mark('session'); }
   }
 
   function installSessionSettings() {

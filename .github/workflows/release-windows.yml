@@ -1,4 +1,4 @@
-name: Build and publish DEEP-ECHO 2.6.6 (v2.6.6)
+name: Build and publish DEEP-ECHO 2.6.7 (v2.6.7)
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deep-echo-release-${{ github.ref }}
+  group: deep-echo-release-2.6.7
   cancel-in-progress: false
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
       RELEASE_REPO: windowsdaiyu-cyber/DEEP-ECHO-Releases
-      RELEASE_TITLE: DEEP-ECHO 2.6.6
+      RELEASE_TITLE: DEEP-ECHO 2.6.7
 
     steps:
       - name: Checkout source
@@ -40,13 +40,26 @@ jobs:
           }
           $packageVersion = node -p "require('./package.json').version"
           $allowedTags = @("v$packageVersion", "v$packageVersion-build2")
-          if ($env:GITHUB_REF_NAME -notin $allowedTags) {
+          $retryPattern = '^v' + [regex]::Escape($packageVersion) + '-build(?:[2-9]|[1-9][0-9]+)$'
+          if ($env:GITHUB_REF_NAME -notin $allowedTags -and $env:GITHUB_REF_NAME -notmatch $retryPattern) {
             throw "Source tag $env:GITHUB_REF_NAME does not match package.json version $packageVersion or its recovery build"
           }
-          if ($packageVersion -ne '2.6.6') {
-            throw "DEEP-ECHO 2.6.6 must ship as semantic update version 2.6.6, found $packageVersion"
+          if ($packageVersion -ne '2.6.7') {
+            throw "DEEP-ECHO 2.6.7 must ship as semantic update version 2.6.7, found $packageVersion"
           }
           gh api "repos/$env:RELEASE_REPO" --jq '.full_name' | Out-Null
+
+      - name: Refuse duplicate publication
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $existing = & gh api "repos/$env:RELEASE_REPO/releases/tags/v$version" 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            throw "Version $version already has a release. It will not be overwritten."
+          }
+          if (($existing -join "`n") -notmatch 'HTTP 404') {
+            throw 'Cannot verify release availability. Stopping before build/publication.'
+          }
 
       - name: Cache Electron build tools
         uses: actions/cache@v6
@@ -85,7 +98,7 @@ jobs:
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
-          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.6.6.md --latest
+          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.6.7.md --latest
           gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,url,assets
 
       - name: Verify latest updater assets
@@ -106,7 +119,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: deep-echo-2.6.6-build-debug
+          name: deep-echo-2.6.7-build-debug
           path: |
             dist/**
             builder-debug.yml

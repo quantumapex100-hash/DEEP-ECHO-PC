@@ -27,7 +27,7 @@ test('first search result prebuffers immediately; later results do not replace i
   const code=source.slice(source.indexOf('async function pumpSearchInstantWarm()'),source.indexOf('function beginSearchInstantWarm('));
   const warmed=[],cache=new Map();
   const entry=(id,priority)=>({song:{id},priority,serial:1,request:1});
-  const ctx={searchInstantWarmRunning:false,searchInstantWarmQueue:[entry('first','search'),entry('second','search'),entry('third','search')],
+  const ctx={playRequest:1,loadingRequest:null,searchInstantWarmRunning:false,searchInstantWarmQueue:[entry('first','search'),entry('second','search'),entry('third','search')],
     searchInstantWarmSerial:1,searchRequest:1,searchInstantBufferedSerial:-1,smartPreparedStreamUrls:cache,
     window:{echoAPI:{prefetchSong:async song=>({success:true,streamUrl:'https://audio/'+song.id})}},
     normalizeSong:s=>s,smartWarmPreparedUrl:url=>warmed.push(url),setTimeout:fn=>fn(),Date};
@@ -39,7 +39,7 @@ test('first search result prebuffers immediately; later results do not replace i
 
 test('stale stream resolves cannot warm audio or overwrite prepared URLs',async()=>{
   const source=read('src/renderer.js'),warmed=[];
-  const ctx={searchInstantWarmRunning:false,searchInstantWarmQueue:[{song:{id:'old'},priority:'search',serial:1,request:1}],
+  const ctx={playRequest:1,loadingRequest:null,searchInstantWarmRunning:false,searchInstantWarmQueue:[{song:{id:'old'},priority:'search',serial:1,request:1}],
     searchInstantWarmSerial:1,searchRequest:1,searchInstantBufferedSerial:-1,smartPreparedStreamUrls:new Map(),
     window:{echoAPI:{prefetchSong:async()=>{ctx.searchRequest=2;return {success:true,streamUrl:'old'};}}},
     normalizeSong:s=>s,smartWarmPreparedUrl:url=>warmed.push(url),setTimeout:fn=>fn(),Date};
@@ -55,12 +55,27 @@ test('hovering a cached result prebuffers its URL without another resolver reque
     smartWarmPreparedUrl:url=>warmed.push(url),Date};
   vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('function enqueueSearchInstantWarm('),source.indexOf('function warmVisibleCards(')),ctx);
   ctx.enqueueSearchInstantWarm({id:'ready'},1,true,'intent');assert.deepEqual(warmed,['https://audio/ready']);
+  ctx.loadingRequest={id:'selected'};
+  ctx.enqueueSearchInstantWarm({id:'ready'},1,true,'intent');assert.equal(warmed.length,1,'cached hover cannot compete with selected playback');
 });
 
 test('repeated hover does not reset the same audio prebuffer',()=>{
   const source=read('src/renderer.js');let created=0,loads=0;
-  const ctx={Audio:function(){created++;this.load=()=>{loads++;};this.pause=()=>{};this.removeAttribute=()=>{};}};
+  const ctx={configurePlaybackOrigin:()=>{},Audio:function(){created++;this.load=()=>{loads++;};this.pause=()=>{};this.removeAttribute=()=>{};}};
   vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('let smartWarmupAudio ='),source.indexOf('function smartUpcomingSongs(')),ctx);
   ctx.smartWarmPreparedUrl('https://audio/ready');ctx.smartWarmPreparedUrl('https://audio/ready');
   assert.equal(created,1);assert.equal(loads,1);
+});
+
+test('Search warmup finishing after new playback or quality selection cannot cache or buffer stale audio',async()=>{
+  for(const change of [c=>c.playRequest++,c=>c.loadingRequest={requestId:1},c=>c.window.__dinechoAudioQuality='high']){
+    const source=read('src/renderer.js'),warmed=[];let finish;
+    const ctx={playRequest:1,loadingRequest:null,searchInstantWarmRunning:false,searchInstantWarmQueue:[{song:{id:'old'},priority:'search',serial:1,request:1}],
+      searchInstantWarmSerial:1,searchRequest:1,searchInstantBufferedSerial:-1,smartPreparedStreamUrls:new Map(),
+      window:{echoAPI:{prefetchSong:()=>new Promise(resolve=>finish=resolve)}},
+      normalizeSong:s=>s,smartWarmPreparedUrl:url=>warmed.push(url),setTimeout:fn=>fn(),Date};
+    vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('async function pumpSearchInstantWarm()'),source.indexOf('function beginSearchInstantWarm(')),ctx);
+    const pending=ctx.pumpSearchInstantWarm();change(ctx);finish({success:true,streamUrl:'old'});await pending;
+    assert.equal(warmed.length,0);assert.equal(ctx.smartPreparedStreamUrls.size,0);
+  }
 });

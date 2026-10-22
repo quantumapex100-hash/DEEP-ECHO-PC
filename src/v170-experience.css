@@ -21,7 +21,7 @@ body.lyrics-theme-fx[data-theme] .lyric-line.current{
 }
 .lyric-line.current::before{display:none!important;content:none!important}
 .lyric-line{contain:paint style}
-.lyric-line:not(.current){transform:translate3d(0,0,0) scale(1)!important}
+.lyric-line:not(.current){transform:none!important}
 
 /* Immersive lyrics get the same music-driven bounce, not a separate clock. */
 .immersive-lyrics-body .lyric-line.current,
@@ -105,6 +105,47 @@ body.v170-art-accent .immersive-meta p,body.v170-art-accent .immersive-lyrics-ki
 /* Keep UI smooth in constrained render budgets without removing features. */
 body.v170-render-eco .lyrics-ambient-visualizer,body.v170-render-eco #v170PlayerWaveform{filter:none!important}
 body.v170-adaptive-pressure *{scroll-behavior:auto!important}
+/* Preserve the themed canvas and lighting; avoid large changing software filters under pressure. */
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView .lyrics-ambient-visualizer{filter:none!important}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting::before{filter:blur(24px)}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting::after{filter:blur(18px)}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) .sidebar,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) .topbar,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) .player-bar{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView .lyric-line.current,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView .lyric-line.current::after{filter:none!important}
+
+/* The canvas has its own theme drop-shadows in v228/v273, independent of
+   the parent filter above. Re-blurring a changing 800px bitmap twice per frame
+   is expensive in software graphics. The renderer already paints a themed aura.
+   Keep the user's brightness control and use that aura when adapting. */
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView #lyricsVisualizerCanvas,
+body.v170-render-eco #lyricsView #lyricsVisualizerCanvas{
+  filter:var(--v170-adaptive-canvas-filter,none)!important;
+}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting::before,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting::after{filter:none!important}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting{mix-blend-mode:normal}
+body.v170-adaptive-pressure #v170PlayerWaveform,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170PlayerWaveform{filter:none!important}
+body.v170-adaptive-pressure .sidebar,
+body.v170-adaptive-pressure .topbar,
+body.v170-adaptive-pressure .player-bar{
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+}
+/* Cards and header controls can also re-blur the moving particle backdrop.
+   Keep their themed fills/borders; skip only the backdrop sampling under load. */
+body.v170-adaptive-pressure .app *,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) .app *{
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView .lyrics-visualizer-core{
+  animation:v170CoreBreath 2.9s ease-in-out infinite;
+}
+@keyframes v170CoreBreath{
+  0%,100%{transform:scale(.985)}
+  50%{transform:scale(1.045)}
+}
 
 @media (prefers-reduced-motion:reduce){
   .lyric-line.current,.immersive-lyrics-body .lyric-line.current{transform:none!important;transition:none!important}

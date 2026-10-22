@@ -386,11 +386,17 @@
       if (chosen.length >= 24) break;
     }
 
-    state.candidates = append ? uniqueSongs([...state.candidates, ...chosen]) : chosen;
+    // Keep the imminent prepared recommendation stable when slower radio results arrive.
+    const reserved = state.candidates.find(song => !state.playedIds.has(song.id) && !sameSongFamily(song,state.currentSeed));
+    state.candidates = append ? uniqueSongs([...state.candidates, ...chosen]) : uniqueSongs([...(reserved ? [reserved] : []), ...chosen]);
     setStatus(state.candidates.length ? 'ready' : 'empty', network.source);
     try {
-      const warm = state.candidates.slice(0, 2);
-      if (window.echoAPI?.prefetchSong) warm.forEach(song => window.echoAPI.prefetchSong(song).catch(() => {}));
+      const warm = state.candidates.slice(0, 1);
+      if (typeof prefetchNextQueued==='function' && !audioPlayer.paused && !loadingRequest) {
+        void prefetchNextQueued();
+      } else if (window.echoAPI?.prefetchSong) {
+        warm.forEach(song => window.echoAPI.prefetchSong({...song,prefetchPriority:'idle'}).catch(() => {}));
+      }
     } catch (_) {}
     return state.candidates;
   }
@@ -406,6 +412,7 @@
 
   function arm(seed, type) {
     if (!enabled() || !isEligibleContextType(type) || !seed?.id) { disarm(); return; }
+    state.buildSerial++; state.building = null;
     state.active = true;
     state.originType = type;
     state.anchorSeed = seed;
@@ -414,6 +421,12 @@
     state.steps = 0;
     state.playedIds.clear(); state.playedFamilies.clear(); state.artistRuns.clear();
     markPlayed(seed);
+    // Reserve one already-known recommendation without starting network work.
+    // The audible player can warm Next while radio discovery is still running.
+    const ranks = tasteRankMap(), recent = recentIds();
+    state.candidates = localTastePool().slice(0,48).map(song => ({song, score:candidateScore(song,seed,ranks,recent)}))
+      .filter(row => row.score > 0 && (ranks.has(row.song.id) || (artistKey(seed) && !isGenericLabel(artistKey(seed)) && artistKey(row.song) === artistKey(seed)) || vibeAffinity(seed,row.song) > 0))
+      .sort((a,b) => b.score-a.score).slice(0,1).map(row => row.song);
     // Do not start another yt-dlp job while the selected song stream is still resolving.
     // The audio 'play' event below starts discovery after playback is already stable.
     setStatus('warming');
@@ -458,6 +471,7 @@
   }
 
   async function playSmartNext({ auto = false } = {}) {
+    const intent=navigationIntent;
     if (!enabled() || !state.active || !state.currentSeed) return false;
     if (auto && typeof loopMode !== 'undefined' && loopMode === 'one') return false;
     try {
@@ -474,10 +488,12 @@
 
     for (let attempt = 0; attempt < 4; attempt++) {
       const next = await nextSmartCandidate();
+      if(intent!==navigationIntent)return false;
       if (!next) break;
       setStatus('playing');
       let started = false;
       try { started = await playSongObject(next, null, 'smart-autoplay'); } catch (_) { started = false; }
+      if(intent!==navigationIntent)return false;
       if (!started) { markPlayed(next); continue; }
       state.steps++;
       state.currentSeed = next;
@@ -567,12 +583,14 @@
   try {
     const originalPlayNext = playNext;
     playNext = async function smartAutoplayNext(options = {}) {
+      const intent=++navigationIntent;
       const auto = !!options?.auto;
       if (enabled() && state.active) {
         // Loop-one and explicit queues must retain the base player's semantics.
         try { if (auto && loopMode === 'one') return originalPlayNext(options); } catch (_) {}
         try { if (playQueue?.length) { disarm(); return originalPlayNext(options); } } catch (_) {}
         const started = await playSmartNext({ auto });
+        if(intent!==navigationIntent)return;
         if (started) return;
         // If the taste engine has no answer, never blindly jump to another duplicate search result.
         const fallback = safeContextFallback(state.currentSeed || currentSong);
@@ -603,6 +621,7 @@
     get active() { return state.active; },
     get originType() { return state.originType; },
     get queued() { return state.candidates.length; },
+    upcoming(limit=10) { return state.candidates.filter(song=>song?.id&&!state.playedIds.has(song.id)&&!sameSongFamily(song,state.currentSeed)).slice(0,Math.min(10,Math.max(0,limit))).map(song=>({...song})); },
     setEnabled(value) { writeConfig({ enabled: !!value }); if (!value) disarm(); updateToggleUi(); },
     refresh() { return state.active ? rebuildCandidates(state.currentSeed || state.anchorSeed) : Promise.resolve([]); }
   };

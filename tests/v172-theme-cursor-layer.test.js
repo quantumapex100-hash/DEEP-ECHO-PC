@@ -12,7 +12,7 @@ test('v1.7.2 experience layer does not demote the live theme cursor',()=>{
 });
 
 test('base theme cursor still owns the viewport cursor geometry and visibility state',()=>{
-  assert.match(base,/\.dinecho-live-cursor\s*\{[^}]*position:\s*fixed[^}]*left:\s*-100px[^}]*top:\s*-100px[^}]*z-index:\s*2147483647/s);
+  assert.match(base,/\.dinecho-live-cursor\s*\{[^}]*position:\s*fixed[^}]*left:\s*0[^}]*top:\s*0[^}]*transform:\s*translate\(-100px, -100px\)[^}]*z-index:\s*2147483647/s);
   assert.match(base,/\.dinecho-live-cursor\.visible\s*\{\s*opacity:\s*1;\s*\}/);
   assert.match(base,/html\.dinecho-live-cursor-enabled[^\{]*\{\s*cursor:\s*none\s*!important;/);
 });

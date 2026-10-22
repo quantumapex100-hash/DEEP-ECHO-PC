@@ -57,8 +57,13 @@ let retryCount=0,stallTimer=0,lastPosition=0,healthyProgress=0,recoverySongId=''
 function clearRecovery(){clearTimeout(stallTimer);stallTimer=0;}
 function remoteRecoveryAllowed(){
  const src=String(audioPlayer.currentSrc||audioPlayer.src||'');
+ // Startup and compatible-source recovery already have their own owner/deadline.
+ // Restarting them after eight seconds cancels useful work and can repeat forever.
+ const startupBusy=(typeof loadingRequest!=='undefined'&&!!loadingRequest)||
+   (typeof playbackRecoveryPromise!=='undefined'&&!!playbackRecoveryPromise)||
+   (typeof remoteMediaRecoveryInFlight!=='undefined'&&remoteMediaRecoveryInFlight);
  return settings.recovery&&!settings.offline&&!recovering&&currentSong&&
-   /^https?:\/\//i.test(src)&&!audioPlayer.paused&&!audioPlayer.ended&&!audioPlayer.seeking&&retryCount<2;
+   !startupBusy&&/^https?:\/\//i.test(src)&&!audioPlayer.paused&&!audioPlayer.ended&&!audioPlayer.seeking&&retryCount<2;
 }
 audioPlayer.addEventListener('timeupdate',()=>{
  const position=Number(audioPlayer.currentTime)||0;
@@ -93,9 +98,10 @@ for(const id of ['v160Sleep','v170SleepTimer'])on(id,'change',e=>sleep(e.target.
 let normalizationSamples=null;audioPlayer.addEventListener('loadedmetadata',()=>{window.deepEchoNormalizationGain=1});setInterval(()=>{if(!normalizationToggle?.checked||audioPlayer.paused||smartCrossfadeActive)return;if(!audioAnalyser)return;normalizationSamples=normalizationSamples?.length===audioAnalyser.fftSize?normalizationSamples:new Uint8Array(audioAnalyser.fftSize);audioAnalyser.getByteTimeDomainData(normalizationSamples);window.deepEchoNormalizationGain=C.normalizedGain(normalizationSamples,window.deepEchoNormalizationGain??1);smartApplyNormalization()},180);
 on('deLyricsFix','click',async()=>{if(!currentSong)return showToast('Play a song first.');await service('repair','lyrics');$('v170LyricsOffsetReset')?.click();$('v160OffsetReset')?.click();await loadLyricsFor(currentSong);notify('Lyrics reloaded and offsets reset')});
 let currentAppVersion='…';
-const DEEPECHO_RELEASE_VERSION='2.6.6';
+const DEEPECHO_RELEASE_VERSION='2.6.7';
 try{const v42Label=document.querySelector('.v228-test-label');if(v42Label)v42Label.textContent=DEEPECHO_RELEASE_VERSION;}catch(_){}
 const whatsNewItems={
+ '2.6.7':['Seven-second themed cinematic startup with previous-session restoration and fullscreen launch.','Search keeps the requested song ahead of unrelated lyrics uploads and prevents stale category results.','Search avoids duplicate lookup work; playback can recover using another format from the same extraction.','Smoother Home, Lyrics and Calm entry, with chunked scenery preparation and reduced background rendering work.','Lyrics sync/alignment, Exact Lyrics, Smart Autoplay and Downloads remain preserved.','Online startup time still depends on the source and connection; instant playback is not guaranteed.'],
  '2.6.6':['Home adds Viral Songs, Speed Dial and 12 all-time playlist collections with Open and Play actions.','Viral discoveries include covers/remixes and refresh while Home is active; Viral Songs and all-time collections use horizontal rows with left/right controls.','Sync to video is opaque, theme-colored and clickable across all 14 themes.','Search shares duplicate requests, caches recent results and prebuffers the first likely result and hovered songs.','Settings includes About Developer and the enchanting_daiyu Instagram profile link.','Lyrics sync/alignment, Exact Lyrics, Smart Autoplay, Downloads and the accepted playback/recovery engines are preserved.'],
  '2.6.5':['Red Nebulae is now a complete live theme with its own premium reactive visualizer, Floating Lyrics, Immersive Lyrics and theme-native presentation.','Previous-session playback resumes faster, while Home, Search and Recently Played prepare likely songs early so real Play requests can start with less waiting.','Floating Lyrics are more open and balanced across themes, with a smaller current line, better upcoming-line placement and less boxed animation.','Search and base lyrics initialization is hardened so startup prewarm cannot interrupt Search results or lyrics loading.','Lyrics sync/alignment, Exact Lyrics, Word by Word, Pronunciation, Smart Autoplay, Downloads and the accepted playback/recovery engines remain preserved.'],
  '2.6.3':['Instant Playback now prioritizes real Play requests above all speculative work so newly selected songs start faster.','Search warms likely visible results while Home, Recently Played, Made For You, Because You Listened To and Continue Listening cards receive low-priority intent warmup.','Next-song URL pre-resolution begins shortly after playback starts even with Gapless OFF, reducing cold Next transitions while Gapless still controls media-byte prebuffering.','Downloads and local files continue to use the existing direct local playback path without remote prefetch.','Lyrics sync/alignment, Exact Lyrics, Word by Word, Pronunciation, Floating/Immersive Lyrics, Smart Autoplay and the accepted compatibility recovery behavior are preserved.'],
