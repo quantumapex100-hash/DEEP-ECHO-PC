@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Accepted source contains intentional mixed line endings and exact-byte guards.
+# Preserve these two files through staging/checkout instead of silently changing
+# their protected hashes during the release upload. Application code is unchanged.
+main.js -text
+lib/ytdlp-smart.js -text

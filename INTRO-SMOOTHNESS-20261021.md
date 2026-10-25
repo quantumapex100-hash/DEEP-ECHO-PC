@@ -1,0 +1,11 @@
+# Intro rendering optimization
+
+Removed the fixed approximately 30 FPS pointer throttle. Parallax now uses display-paced frames with time-based damping and cached element references, and sleeps after settling. Decorative filament/liquid paths are encoded once per palette as local SVG images; their cached surfaces move without per-frame path dash painting or SVG drop-shadow. Broad shafts animate opacity rather than blur. Loading-bar progress scales a fixed-width layer instead of animating layout width. Pixel clipping follows display ticks; fringe-canvas work is bounded to about 60 paints per second. The seven-second intro, 1650 ms reveal easing, 1300 ms entrance and fullscreen default are preserved.
+
+The opaque overlay avoids redundant underlying app painting via visibility, while keeping DOM layout, resource loading, library hydration and session restoration active. Composition resumes just before six seconds to prepare the real app before its entrance. Cleanup and early-skip paths always release visibility and inert state.
+
+Native fullscreen continuous-pointer benchmark, two 2.4-second samples per version: Golden rendered frames increased 82 to 121, Toxic 85 to 139. Distinct parallax positions increased 54 to 121 and 51 to 138. p95 frame intervals improved from 48.4 to 28.6 ms and 41.8 to 27.9 ms. Final samples recorded no intervals over 50 ms and no long tasks. These short local measurements are not a fixed FPS guarantee for all hardware, startup loads or themes.
+
+557 regression tests and renderer smoke pass. New tests check display-tick pointer updates, sleeping after settling, local reusable decoration assets and release of covered-app visibility. Native startup tests retain saved-theme/session, stalled-stream, fullscreen and final-control checks. Evidence: .startup-diagnostic/intro-perf-before.json, intro-perf-final.json, startup-intro-native.json and intro-smooth-final-tests.txt. Harness: scripts/probe-intro-performance.cjs.
+
+Only src/startup-intro.js and src/startup-intro-template.js changed among existing production assets. Backup: ../../backups/before-intro-smooth-20261021/. All existing player, search, session, lyrics, downloads, Calm and main-process files match the backup manifest.

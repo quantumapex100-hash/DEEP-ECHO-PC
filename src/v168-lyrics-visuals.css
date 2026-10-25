@@ -1,0 +1,70 @@
+/* Deepeccho v1.6.8 — presentation-only themed lyric accents.
+   This file intentionally does not alter lyric timing, line selection or playback state. */
+body.lyrics-theme-fx .lyrics-body .lyric-line.current,
+body.lyrics-theme-fx .immersive-lyrics-body .lyric-line.current{
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+}
+body.lyrics-theme-fx .lyrics-body .lyric-line.current::after,
+body.lyrics-theme-fx .immersive-lyrics-body .lyric-line.current::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  opacity:.72;
+  border-radius:inherit;
+  background-repeat:repeat;
+  mix-blend-mode:screen;
+}
+body.lyrics-theme-fx[data-theme="golden"] .lyric-line.current::after{
+  background-image:radial-gradient(circle,rgba(255,246,190,.92) 0 1px,transparent 1.8px),linear-gradient(105deg,transparent 32%,rgba(255,232,139,.23) 48%,transparent 62%);
+  background-size:28px 28px,220% 100%;animation:lyricSparkGold 2.2s linear infinite;
+}
+body.lyrics-theme-fx[data-theme="light"] .lyric-line.current::after{
+  background:linear-gradient(105deg,transparent 28%,rgba(255,255,255,.54) 49%,transparent 68%);background-size:230% 100%;animation:lyricSoftSweep 2.7s ease-in-out infinite;
+}
+body.lyrics-theme-fx[data-theme="dark"] .lyric-line.current::after{
+  background:repeating-linear-gradient(90deg,transparent 0 19px,rgba(151,183,255,.07) 20px 21px),linear-gradient(90deg,transparent,rgba(142,169,255,.12),transparent);animation:lyricDarkScan 2.8s linear infinite;
+}
+body.lyrics-theme-fx[data-theme="purple"] .lyric-line.current::after{
+  background:linear-gradient(118deg,transparent 0 39%,rgba(226,206,255,.8) 40%,transparent 41% 55%,rgba(174,105,255,.55) 56%,transparent 57%);background-size:280% 100%;animation:lyricElectricBolt 1.65s steps(6,end) infinite;
+}
+body.lyrics-theme-fx[data-theme="toxic"] .lyric-line.current::after{
+  background:radial-gradient(circle at 18% 50%,rgba(103,255,137,.24),transparent 18%),repeating-linear-gradient(90deg,transparent 0 15px,rgba(77,255,119,.08) 16px 17px);animation:lyricToxicScan 1.4s steps(4,end) infinite;
+}
+body.lyrics-theme-fx[data-theme="blood"] .lyric-line.current::after{
+  background:radial-gradient(ellipse at 18% 15%,rgba(255,80,105,.34),transparent 25%),radial-gradient(ellipse at 72% 110%,rgba(148,0,31,.4),transparent 38%);animation:lyricBloodLiquid 1.55s cubic-bezier(.4,0,.2,1) infinite;
+}
+body.lyrics-theme-fx[data-theme="silver"] .lyric-line.current::after{
+  background:linear-gradient(108deg,transparent 25%,rgba(255,255,255,.76) 47%,rgba(181,210,238,.22) 54%,transparent 70%);background-size:260% 100%;animation:lyricSilverSpark 2s ease-in-out infinite;
+}
+body.lyrics-theme-fx[data-theme="transparent"] .lyric-line.current::after{
+  background:linear-gradient(110deg,transparent 26%,rgba(220,236,255,.22) 48%,transparent 67%);background-size:240% 100%;animation:lyricGlassSweep 2.8s ease-in-out infinite;
+}
+body.lyrics-theme-fx[data-theme="fluids"] .lyric-line.current::after{
+  background:radial-gradient(ellipse at 18% 50%,rgba(72,233,255,.22),transparent 24%),radial-gradient(ellipse at 76% 52%,rgba(71,112,255,.16),transparent 29%);animation:lyricFluidDrift 1.8s ease-in-out infinite alternate;
+}
+body.lyrics-theme-fx[data-theme="rgb"] .lyric-line.current::after{
+  background:linear-gradient(90deg,rgba(255,65,120,.12),rgba(255,218,82,.12),rgba(74,255,164,.12),rgba(83,205,255,.14),rgba(190,96,255,.13),rgba(255,78,207,.12));background-size:240% 100%;animation:lyricRgbPrism 1.45s linear infinite;
+}
+body.lyrics-theme-fx[data-theme="love"] .lyric-line.current::after{
+  background:radial-gradient(circle at 18% 50%,rgba(255,111,187,.26),transparent 18%),radial-gradient(circle at 72% 45%,rgba(184,105,255,.17),transparent 20%);animation:lyricLoveBloom 1.25s ease-in-out infinite;
+}
+body.lyrics-theme-fx[data-theme="space"] .lyric-line.current::after{
+  background-image:radial-gradient(circle,rgba(255,255,255,.85) 0 1px,transparent 1.6px),radial-gradient(circle,rgba(105,218,255,.75) 0 1px,transparent 1.5px),linear-gradient(100deg,transparent 30%,rgba(178,115,255,.18) 52%,transparent 72%);background-size:34px 34px,51px 51px,240% 100%;animation:lyricSpaceStars 2.6s linear infinite;
+}
+@keyframes lyricSparkGold{0%{background-position:0 0,-120% 0;opacity:.36}50%{opacity:.88}100%{background-position:18px -18px,120% 0;opacity:.42}}
+@keyframes lyricSoftSweep{0%,20%{background-position:125% 0;opacity:.15}55%{opacity:.75}100%{background-position:-115% 0;opacity:.12}}
+@keyframes lyricDarkScan{0%{background-position:-50px 0,0 0;opacity:.25}50%{opacity:.62}100%{background-position:50px 0,100% 0;opacity:.25}}
+@keyframes lyricElectricBolt{0%,100%{background-position:110% 0;opacity:.18}42%{background-position:52% 0;opacity:.8}48%{background-position:47% 0;opacity:.28}55%{background-position:42% 0;opacity:.92}}
+@keyframes lyricToxicScan{0%,100%{filter:brightness(.9);opacity:.35}50%{filter:brightness(1.45);opacity:.78}}
+@keyframes lyricBloodLiquid{0%,100%{transform:scaleX(.98);opacity:.32}18%{transform:scaleX(1.02);opacity:.76}35%{opacity:.42}}
+@keyframes lyricSilverSpark{0%{background-position:135% 0;opacity:.16}48%{opacity:.82}100%{background-position:-135% 0;opacity:.17}}
+@keyframes lyricGlassSweep{0%{background-position:130% 0;opacity:.12}50%{opacity:.48}100%{background-position:-120% 0;opacity:.15}}
+@keyframes lyricFluidDrift{from{transform:translateX(-4%) scale(1);opacity:.3}to{transform:translateX(5%) scale(1.04);opacity:.74}}
+@keyframes lyricRgbPrism{to{background-position:240% 0}}
+@keyframes lyricLoveBloom{0%,100%{transform:scale(.99);opacity:.33}14%{transform:scale(1.02);opacity:.78}30%{transform:scale(1);opacity:.42}}
+@keyframes lyricSpaceStars{0%{background-position:0 0,13px 19px,130% 0;opacity:.28}50%{opacity:.8}100%{background-position:17px -20px,-11px 13px,-120% 0;opacity:.34}}
+@media(prefers-reduced-motion:reduce){body.lyrics-theme-fx .lyric-line.current::after{animation:none!important}}

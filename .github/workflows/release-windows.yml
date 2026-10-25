@@ -1,0 +1,132 @@
+name: Build and publish DEEP-ECHO 2.6.7 (v2.6.7)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deep-echo-release-2.6.7
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      RELEASE_REPO: windowsdaiyu-cyber/DEEP-ECHO-Releases
+      RELEASE_TITLE: DEEP-ECHO 2.6.7
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Verify release inputs
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw 'Missing RELEASE_TOKEN repository secret.'
+          }
+          $packageVersion = node -p "require('./package.json').version"
+          $allowedTags = @("v$packageVersion", "v$packageVersion-build2")
+          $retryPattern = '^v' + [regex]::Escape($packageVersion) + '-build(?:[2-9]|[1-9][0-9]+)$'
+          if ($env:GITHUB_REF_NAME -notin $allowedTags -and $env:GITHUB_REF_NAME -notmatch $retryPattern) {
+            throw "Source tag $env:GITHUB_REF_NAME does not match package.json version $packageVersion or its recovery build"
+          }
+          if ($packageVersion -ne '2.6.7') {
+            throw "DEEP-ECHO 2.6.7 must ship as semantic update version 2.6.7, found $packageVersion"
+          }
+          gh api "repos/$env:RELEASE_REPO" --jq '.full_name' | Out-Null
+
+      - name: Refuse duplicate publication
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read the app version.' }
+          $existing = & gh api "repos/$env:RELEASE_REPO/releases/tags/v$version" 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            throw "Version $version already has a release. It will not be overwritten."
+          }
+          if (($existing -join "`n") -notmatch 'HTTP 404') {
+            throw 'Cannot verify release availability. Stopping before build/publication.'
+          }
+          Write-Host "Version $version is unpublished; continuing with the build."
+          # The runner propagates LASTEXITCODE. gh's expected 404 returns 1,
+          # so finish successfully only after confirming that expected absence.
+          exit 0
+
+      - name: Cache Electron build tools
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Bundle latest yt-dlp
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          $nightly = 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe'
+          $stable = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+          try {
+            Invoke-WebRequest -Uri $nightly -OutFile 'bin/yt-dlp.exe' -UseBasicParsing
+          } catch {
+            Invoke-WebRequest -Uri $stable -OutFile 'bin/yt-dlp.exe' -UseBasicParsing
+          }
+          if (-not (Test-Path 'bin/yt-dlp.exe')) { throw 'yt-dlp download failed' }
+
+      - name: Run complete automated test suite
+        run: npm test
+
+      - name: Build and publish installer
+        run: npm run release
+
+      - name: Finalize release title and notes
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.6.7.md --latest
+          gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,url,assets
+
+      - name: Verify latest updater assets
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+          $latestTag = gh api "repos/$env:RELEASE_REPO/releases/latest" --jq '.tag_name'
+          if ($latestTag -ne $tag) { throw "Latest release is $latestTag, expected $tag" }
+          $assets = gh api "repos/$env:RELEASE_REPO/releases/tags/$tag" --jq '.assets[].name'
+          $required = @("DEEP-ECHO-$packageVersion-Setup.exe", "DEEP-ECHO-$packageVersion-Setup.exe.blockmap", "latest.yml")
+          foreach ($name in $required) {
+            if ($assets -notcontains $name) { throw "Missing required release asset: $name" }
+          }
+          Write-Host "Verified latest release $tag with installer, blockmap and latest.yml"
+
+      - name: Upload build diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: deep-echo-2.6.7-build-debug
+          path: |
+            dist/**
+            builder-debug.yml
+            builder-effective-config.yaml
+          if-no-files-found: ignore

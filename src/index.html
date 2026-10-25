@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DEEP-ECHO</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="v168-lyrics-visuals.css" />
+<link rel="stylesheet" href="v169-pro-lyrics.css" />
+<link rel="stylesheet" href="v170-experience.css" />
+<link rel="icon" type="image/png" href="assets/dinecho-logo.png" />
+<link rel="stylesheet" href="v200.css" />
+<link rel="stylesheet" href="v220-home-search.css" />
+<link rel="stylesheet" href="v228-visual-polish.css" />
+<link rel="stylesheet" href="v236-discovery-shelves.css" />
+<link rel="stylesheet" href="v238-smart-autoplay.css" />
+<link rel="stylesheet" href="v2310-smart-system.css" />
+<link rel="stylesheet" href="v2313-repair-artist.css" />
+<link rel="stylesheet" href="v2314-session-mixes-stats.css" />
+<link rel="stylesheet" href="v2315-global-playlist-open.css">
+<link rel="stylesheet" href="v253-pro-suite.css">
+<link rel="stylesheet" href="v255-lyrics-recovery.css">
+<link rel="stylesheet" href="v256-reliability.css">
+<link rel="stylesheet" href="v273-red-nebula-performance.css">
+<link rel="stylesheet" href="home-discovery.css">
+<link rel="stylesheet" href="feel-happy.css">
+<link rel="stylesheet" href="material-controls.css">
+</head>
+<body data-theme="golden" class="deepeccho-startup-lite">
+<script src="startup-intro-template.js"></script>
+<script src="startup-intro.js"></script>
+
+<canvas id="particles"></canvas>
+<div id="nowPlayingBackdrop" class="now-playing-backdrop" aria-hidden="true"></div>
+
+<div class="app">
+  <aside id="appSidebar" class="sidebar">
+    <div class="brand"><div class="brand-text">DEEP-ECHO</div></div>
+    <div class="v228-test-label">2.6.7</div>
+
+    <nav class="side-nav">
+      <button class="nav-item active" data-tab="home">Home</button>
+      <button class="nav-item" data-tab="search">Search</button>
+    </nav>
+
+    <button id="artistSearchBtn" class="artist-search-btn side-artist-btn">Search Artist</button>
+
+    <div class="side-label">your collection</div>
+    <nav class="side-nav">
+      <button class="nav-item" data-tab="library">Downloads</button>
+      <button class="nav-item" data-tab="lyrics">Lyrics</button>
+      <button class="nav-item" data-tab="liked">Liked Songs</button>
+      <button class="nav-item" data-tab="playlists">Playlists</button>
+      <button class="nav-item" data-tab="history">History</button>
+      <button class="nav-item" data-tab="feelHappy">Calm Yourself</button>
+      <button class="nav-item" data-tab="settings">Settings</button>
+    </nav>
+  </aside>
+
+  <div class="main-col">
+    <header class="topbar">
+      <div class="search-area">
+        <div class="search-box">
+          <input id="searchInput" type="text" placeholder="DEVELOPED BY DAIYAN  [ALLHAMDULLILAH]" />
+          <button id="searchBtn">Search</button>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div class="status-pill">ONLINE + OFFLINE</div>
+        <button id="appFullscreenBtn" class="app-fullscreen-btn" type="button" aria-label="Enter app fullscreen" title="App Fullscreen · F11">⛶</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="homeView" class="view active">
+        <h1 id="homeGreeting" class="greet">Good evening.</h1>
+        <p id="homeCaption" class="tagline">A little less noise. A little more music.</p>
+        <div class="hero-card">
+          <div id="homeHeroLabel" class="hero-label">YOUR MUSIC. YOUR SPACE.</div>
+          <div id="homeHeroTitle" class="hero-title">Press play.<br/>Find your moment.</div>
+          <button id="heroSearchBtn" class="hero-btn">Start listening</button>
+        </div>
+
+        <div class="home-section">
+          <div class="section-head"><h2>Recently Played</h2><span>Your latest listens</span></div>
+          <div id="recentGrid" class="card-grid"></div>
+          <p id="recentHint" class="section-hint">Play a song and it will appear here.</p>
+        </div>
+
+        <div id="continueSection" class="home-section smart-home-section">
+          <div class="section-head"><h2>Continue Listening</h2><span>Pick up where you left off</span></div>
+          <div id="continueGrid" class="card-grid"></div>
+          <p id="continueHint" class="section-hint">Partially played songs will appear here.</p>
+        </div>
+
+        <div id="madeForYouSection" class="home-section smart-home-section">
+          <div class="section-head"><h2>Made For You</h2><span>Based on what you actually play</span></div>
+          <div id="madeForYouGrid" class="card-grid"></div>
+          <p id="madeForYouHint" class="section-hint">Play a few songs and DEEP-ECHO will learn your taste.</p>
+        </div>
+
+        <div id="becauseSection" class="home-section smart-home-section">
+          <div class="section-head"><h2 id="becauseTitle">Because You Listened To</h2><span>Similar music without leaving DEEP-ECHO</span></div>
+          <div id="becauseGrid" class="card-grid"></div>
+          <p id="becauseHint" class="section-hint">Recommendations will appear after your listening history builds up.</p>
+        </div>
+
+        <div class="home-section">
+          <div class="section-head"><h2>Top Hits</h2><span>Fresh picks from search</span></div>
+          <div id="topHitsGrid" class="card-grid"></div>
+          <p id="topHitsHint" class="section-hint">Loading top hits...</p>
+        </div>
+
+        <div class="home-section">
+          <div class="section-head"><h2>Top Artist Playlists</h2><span>Open an artist mix before playing</span></div>
+          <div id="topArtistsGrid" class="card-grid"></div>
+          <p id="topArtistsHint" class="section-hint">Loading artist playlists...</p>
+        </div>
+      </section>
+
+      <section id="searchView" class="view">
+        <div class="view-title-row">
+          <div><h2 id="searchViewTitle">Search Results</h2><p id="searchModeText">Songs matching your search</p></div>
+        </div>
+        <div class="search-smart-bar">
+          <div id="searchTypeTabs" class="search-type-tabs" role="tablist" aria-label="Search type">
+            <button class="search-type-tab active" data-search-type="songs" role="tab">Songs</button>
+            <button class="search-type-tab" data-search-type="artists" role="tab">Artists</button>
+            <button class="search-type-tab" data-search-type="albums" role="tab">Albums</button>
+            <button class="search-type-tab" data-search-type="playlists" role="tab">Playlists</button>
+          </div>
+          <div class="recent-search-wrap">
+            <div id="recentSearches" class="recent-searches" aria-label="Recent searches"></div>
+            <button id="clearRecentSearchesBtn" class="recent-search-clear hidden" type="button">Clear All</button>
+          </div>
+        </div>
+        <div id="searchProgressPanel" class="search-progress-panel hidden" aria-live="polite">
+          <div class="search-progress-copy">
+            <strong id="searchProgressLabel">Searching…</strong>
+            <span id="searchProgressPercent">0%</span>
+          </div>
+          <div class="search-progress-track" aria-hidden="true"><i id="searchProgressFill"></i></div>
+          <div id="searchOfflineState" class="search-offline-state hidden">
+            <div><strong>You're Offline</strong><span>Search needs an internet connection.</span></div>
+            <button id="searchGoDownloadsBtn" class="secondary-btn primary-outline" type="button">Go to Downloads</button>
+          </div>
+        </div>
+        <div id="resultsList" class="song-list"></div>
+        <p id="searchHint" class="hint">Search for a song above to get started.</p>
+      </section>
+
+      <section id="libraryView" class="view">
+        <div class="view-title-row"><div><h2>Downloads</h2><p>Available offline</p></div><button id="shuffleDownloadsBtn" class="secondary-btn primary-outline">Shuffle</button></div>
+        <div id="libraryList" class="song-list"></div>
+        <p id="libraryHint" class="hint">No downloaded songs yet. Search and download something!</p>
+      </section>
+
+      <section id="lyricsView" class="view lyrics-view">
+        <div class="lyrics-stage">
+          <div class="lyrics-header-card">
+            <p class="lyrics-kicker">Now Playing Lyrics</p>
+            <h2 class="lyrics-heading" id="lyricsSongTitle">Lyrics</h2>
+            <div class="lyrics-header-meta">
+              <p id="lyricsArtistMeta" class="lyrics-current-artist">Play a song to see its lyrics here.</p>
+              <p id="lyricsSource" class="lyrics-source"></p>
+            </div>
+            <div class="lyrics-header-tools">
+              <button id="lyricsThemeFxToggle" class="lyrics-fx-toggle active" type="button" aria-pressed="true" aria-label="Toggle theme lyrics font and animation">
+                <span class="lyrics-fx-dot" aria-hidden="true"></span>
+                <span>Theme Lyrics</span>
+                <strong id="lyricsThemeFxToggleText">ON</strong>
+              </button>
+              <div class="lyrics-tool-row">
+                <input id="lyricsFindInput" class="lyrics-find-input" type="search" placeholder="Find in lyrics" aria-label="Find text in lyrics"/>
+                <button id="lyricsOriginalToggle" class="lyrics-fx-toggle" type="button" disabled title="English letters only — not English translation">Romanized</button>
+                <button id="lyricsTranslationToggle" class="lyrics-fx-toggle" type="button" disabled title="Enabled when a translation is available">Translate</button>
+                <button id="v170KaraokeToggle" class="lyrics-fx-toggle" type="button" aria-pressed="false" title="Distraction-free karaoke layout"><span>Karaoke</span><strong id="v170KaraokeState">OFF</strong></button>
+                <button id="wordByWordToggle" class="lyrics-fx-toggle" type="button" aria-pressed="true" title="Highlight each word using exact available timing; falls back to line sync when exact word timing is unavailable"><span>Word by Word</span><strong id="wordByWordState">ON</strong></button>
+                <div id="exactLyricsControl" class="exact-lyrics-control">
+                  <button id="exactLyricsBtn" class="lyrics-fx-toggle exact-lyrics-toggle" type="button" aria-pressed="false" title="Turn Exact Lyrics on for this song. DEEP-ECHO will find the best lyric video, read it locally, and sync it to the current track.">
+                    <span class="exact-lyrics-icon" aria-hidden="true">✦</span>
+                    <span class="exact-lyrics-label">Exact Lyrics</span>
+                    <span class="exact-lyrics-switch-ui" aria-hidden="true"><i></i></span>
+                    <strong id="exactLyricsState">OFF</strong>
+                  </button>
+                  <div id="exactLyricsProgress" class="exact-lyrics-progress" aria-hidden="true">
+                    <div class="exact-lyrics-progress-track"><span id="exactLyricsProgressFill"></span></div>
+                    <small id="exactLyricsProgressText">Ready when you need exact lyrics.</small>
+                  </div>
+                </div>
+                <button id="v170LyricsMinus" class="lyrics-fx-toggle lyrics-offset-step" type="button" title="This song lyrics 0.5 seconds earlier">−0.5s</button>
+                <button id="v170LyricsPlus" class="lyrics-fx-toggle lyrics-offset-step" type="button" title="This song lyrics 0.5 seconds later">+0.5s</button>
+                <button id="v170LyricsOffsetReset" class="lyrics-fx-toggle lyrics-offset-step" type="button" title="Reset this song's saved sync correction"><strong id="v170LyricsOffsetLabel">0.0s</strong></button>
+                <button id="floatingLyricsToggleBtn" class="lyrics-fx-toggle floating-lyrics-page-toggle" type="button" aria-pressed="false" title="Open always-on-top floating lyrics">
+                  <span class="floating-lyrics-mini-icon" aria-hidden="true">▱</span><span>Floating Lyrics</span><strong id="floatingLyricsState">OFF</strong>
+                </button>
+                <button id="floatingImmersiveLyricsToggleBtn" class="lyrics-fx-toggle immersive-lyrics-page-toggle" type="button" aria-pressed="false" title="Open right-side full-height Floating Immersive Lyrics">
+                  <span class="floating-lyrics-mini-icon" aria-hidden="true">▥</span><span>Immersive Lyrics</span><strong id="floatingImmersiveLyricsState">OFF</strong>
+                </button>
+                <button id="floatingLyricsClickThroughPageBtn" class="lyrics-fx-toggle floating-clickthrough-page-toggle" type="button" aria-pressed="false" title="Let mouse clicks pass through the floating lyrics overlay · Ctrl+Alt+X">
+                  <svg class="floating-clickthrough-mini-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l12 9-5 1.5 3.5 6-2.8 1.6-3.4-6L6 19z"/><path d="M17.5 4.5l2 2M20 4l-3 3"/></svg><span>Click-through</span><strong id="floatingLyricsClickThroughState">OFF</strong>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <form id="lyricsSearchForm" class="lyrics-search">
+            <input id="lyricsTitleInput" aria-label="Song title for lyrics" placeholder="Song title" required />
+            <input id="lyricsArtistInput" aria-label="Artist for lyrics" placeholder="Artist (optional for Hindi/Bollywood)" />
+            <button class="secondary-btn" type="submit">Find lyrics</button>
+            <button id="lyricsRetryBtn" class="secondary-btn" type="button">Retry</button>
+          </form>
+
+          <div class="lyrics-content-stage">
+            <div class="lyrics-ambient-visualizer" aria-hidden="true">
+              <canvas id="lyricsVisualizerCanvas" width="720" height="720"></canvas>
+              <div class="lyrics-visualizer-core"></div>
+            </div>
+            <div id="lyricsBody" class="lyrics-body lyrics-scroll-panel">
+              <p class="hint">Play a song to see its lyrics here.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="likedView" class="view">
+        <div class="view-title-row"><div><h2>Liked Songs</h2><p>Your favourites in one place</p></div><button id="shuffleLikedBtn" class="secondary-btn primary-outline">Shuffle</button></div>
+        <div id="likedList" class="song-list"></div>
+        <p id="likedHint" class="hint">Tap Like on any song to add it here.</p>
+      </section>
+
+      <section id="playlistsView" class="view">
+        <div class="view-title-row">
+          <div><h2>Playlists</h2><p>Create collections for any mood</p></div>
+          <button id="newPlaylistBtn" class="secondary-btn primary-outline">New Playlist</button>
+        </div>
+        <div id="playlistCards" class="playlist-grid"></div>
+        <div id="playlistDetail" class="playlist-detail hidden">
+          <div class="view-title-row">
+            <div><h2 id="playlistDetailTitle">Playlist</h2><p id="playlistDetailCount"></p></div>
+            <div class="view-actions"><button id="playlistDetailPlayBtn" class="secondary-btn primary-outline">Play</button><button id="shufflePlaylistBtn" class="secondary-btn primary-outline">Shuffle</button><button id="playlistToolsBtn" class="secondary-btn">Tools</button><button id="backToPlaylistsBtn" class="secondary-btn">All Playlists</button></div>
+          </div>
+          <div id="playlistSongs" class="song-list"></div>
+        </div>
+        <p id="playlistHint" class="hint">Create a playlist, then use Add on any song to add it.</p>
+      </section>
+
+      <section id="historyView" class="view">
+        <div class="view-title-row">
+          <div><h2>Listening History</h2><p>Today, yesterday, and this week</p></div>
+          <button id="clearHistoryBtn" class="secondary-btn">Clear History</button>
+        </div>
+        <div id="historyGroups" class="history-groups"></div>
+        <p id="historyHint" class="hint">Your played songs will appear here.</p>
+      </section>
+
+      <section id="feelHappyView" class="view">
+        <div class="view-title-row"><div><h2>Calm Yourself</h2><p>A little fresh air for your mind.</p></div></div>
+        <div id="happyScene" class="happy-scene" data-time="day">
+          <button id="calmSidebarToggle" class="calm-sidebar-toggle" type="button" aria-controls="appSidebar" aria-expanded="true" aria-label="Hide sidebar" title="Hide sidebar">‹</button>
+          <canvas id="happyCanvas" aria-label="Interactive grassy hillside, clouds and a tree. Move your pointer over the grass." role="img"></canvas>
+          <div class="calm-transport">
+            <div id="calmTransportPanel" class="calm-transport-panel">
+              <div id="calmSongTitle" class="calm-song-title"></div>
+              <div class="calm-transport-buttons" role="group" aria-label="Music playback">
+                <button type="button" data-calm-action="previousBtn" aria-label="Previous song" title="Previous song"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h2v16H5zM19 4v16L8 12z"/></svg></button>
+                <button type="button" data-calm-action="back10Btn" aria-label="Back 10 seconds" title="Back 10 seconds">−10</button>
+                <button id="calmPlayBtn" type="button" data-calm-action="playPauseBtn" aria-label="Play" title="Play">▶</button>
+                <button type="button" data-calm-action="forward10Btn" aria-label="Forward 10 seconds" title="Forward 10 seconds">+10</button>
+                <button type="button" data-calm-action="nextBtn" aria-label="Next song" title="Next song"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 4h2v16h-2zM5 4l11 8-11 8z"/></svg></button>
+              </div>
+              <div class="calm-progress"><span id="calmCurrentTime">0:00</span><input id="calmSeekBar" type="range" min="0" max="100" step="0.1" value="0" aria-label="Song progress" disabled><span id="calmDuration">0:00</span></div>
+            </div>
+            <button id="calmTransportToggle" class="calm-transport-toggle" type="button" aria-controls="calmTransportPanel" aria-expanded="true" aria-label="Hide music controls" title="Hide music controls">⌃</button>
+          </div>
+          <div id="happySkyLyrics" class="happy-sky-lyrics" hidden><p id="happySkyPrev" class="happy-sky-context"></p><p id="happySkyLine" class="happy-sky-current"></p><p id="happySkyNext" class="happy-sky-context"></p></div>
+          <div class="happy-controls" role="group" aria-label="Time of day"><button type="button" data-happy-time="day" aria-pressed="true">Day</button><button type="button" data-happy-time="sunset" aria-pressed="false">Sunset</button><button type="button" data-happy-time="night" aria-pressed="false">Night</button><button id="happyCycle" type="button" aria-pressed="false" title="Automatically change the time of day">Auto</button><button id="happyPause" type="button" aria-pressed="false">Pause</button></div>
+          <p id="happyHint" class="happy-hint" aria-live="polite">Move through the grass. Stay a little.</p>
+        </div>
+      </section>
+      <section id="settingsView" class="view">
+        <div class="view-title-row"><div><h2>Settings</h2><p>Make DEEP-ECHO look the way you want</p></div></div>
+        <div class="settings-card">
+          <div class="setting-title">Change UI</div>
+          <div class="setting-subtitle">Choose a theme for DEEP-ECHO. Your selection is saved automatically.</div>
+          <div id="themeGrid" class="theme-grid">
+            <button class="theme-option" data-theme-choice="light">
+              <span class="theme-preview light-preview"><i></i><i></i><i></i></span>
+              <strong>White</strong><small>Clean bright player UI</small>
+            </button>
+            <button class="theme-option" data-theme-choice="dark">
+              <span class="theme-preview dark-preview"><i></i><i></i><i></i></span>
+              <strong>Black</strong><small>Minimal deep night mode</small>
+            </button>
+            <button class="theme-option" data-theme-choice="golden">
+              <span class="theme-preview golden-preview"><i></i><i></i><i></i></span>
+              <strong>Golden Particle</strong><small>Original glowing gold look</small>
+            </button>
+            <button class="theme-option" data-theme-choice="love">
+              <span class="theme-preview love-preview"><i>♥</i><i>♥</i><i>♥</i></span>
+              <strong>Love RGB</strong><small>Interactive 25-color heart particles</small>
+            </button>
+            <button class="theme-option" data-theme-choice="dragon"><span class="theme-preview dragon-preview"></span><strong>Molten Dragon</strong><small>Spine spectrum · Ember halo</small></button>
+            <button class="theme-option" data-theme-choice="purple">
+              <span class="theme-preview purple-preview"><i></i><i></i><i></i></span>
+              <strong>Purple Lighting</strong><small>Live purple glow particles</small>
+            </button>
+            <button class="theme-option" data-theme-choice="toxic">
+              <span class="theme-preview toxic-preview"><i></i><i></i><i></i></span>
+              <strong>Green Toxic</strong><small>Animated neon toxic motion</small>
+            </button>
+            <button class="theme-option" data-theme-choice="blood">
+              <span class="theme-preview blood-preview"><i></i><i></i><i></i></span>
+              <strong>Red Blood</strong><small>Live liquid splashes</small>
+            </button>
+            <button class="theme-option" data-theme-choice="silver">
+              <span class="theme-preview silver-preview"><i></i><i></i><i></i></span>
+              <strong>Silver Particles</strong><small>Flowing chrome and stardust</small>
+            </button>
+            <button class="theme-option" data-theme-choice="transparent">
+              <span class="theme-preview transparent-preview"><i></i><i></i><i></i></span>
+              <strong>Transparent Glass</strong><small>Layered translucent panels</small>
+            </button>
+            <button class="theme-option" data-theme-choice="fluids">
+              <span class="theme-preview fluids-preview"><i></i><i></i><i></i></span>
+              <strong>Fluids</strong><small>Cursor-reactive live fluid wallpaper</small>
+            </button>
+            <button class="theme-option" data-theme-choice="rgb">
+              <span class="theme-preview rgb-preview"><i></i><i></i><i></i></span>
+              <strong>RGB</strong><small>Live rainbow spectrum background</small>
+            </button>
+            <button class="theme-option" data-theme-choice="space">
+              <span class="theme-preview space-preview"><i></i><i></i><i></i></span>
+              <strong>Vibrant Space</strong><small>Live nebula, stars and cosmic energy</small>
+            </button>
+            <button class="theme-option" data-theme-choice="nebula">
+              <span class="theme-preview nebula-preview"><i></i><i></i><i></i></span>
+              <strong>Red Nebulae</strong><small>Bright crimson nebula · Orbital live spectrum</small>
+            </button>
+          </div>
+          <button id="themeShowMoreBtn" class="theme-show-more" type="button" aria-expanded="false" aria-controls="themeGrid">
+            <span id="themeShowMoreText">Show More</span><span class="theme-show-more-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div id="glassOpacitySetting" class="glass-opacity-setting">
+            <div class="setting-title-row"><span>Window transparency</span><strong id="glassOpacityValue">58%</strong></div>
+            <input id="glassOpacityRange" type="range" min="30" max="100" value="58" aria-label="Transparent window opacity" />
+            <p class="setting-help">30% = desktop/apps behind DEEP-ECHO zyada visible · 100% = normal solid window</p>
+          </div>
+
+          <div class="volume-mixer-setting">
+            <div class="setting-title-row"><span>Volume Mixer</span><strong id="volumeValue">100%</strong></div>
+            <input id="volumeRange" type="range" min="0" max="100" value="100" aria-label="DEEP-ECHO volume mixer" />
+            <div class="setting-inline-actions">
+              <button id="muteToggleBtn" class="secondary-btn" type="button">Mute</button>
+              <span id="volumeStatus" class="setting-help inline">Controls DEEP-ECHO playback volume.</span>
+            </div>
+            <div class="volume-quick-row" aria-label="Exact volume controls">
+              <label>Exact <input id="exactVolumeInput" type="number" min="0" max="100" step="1" value="100" aria-label="Exact volume percentage"/>%</label>
+              <button type="button" data-volume-quick="25">25%</button><button type="button" data-volume-quick="50">50%</button><button type="button" data-volume-quick="75">75%</button><button type="button" data-volume-quick="100">100%</button>
+            </div>
+          </div>
+
+          <div id="fluidSettings" class="fluid-settings">
+            <div class="setting-title-row"><span>Fluid Wallpaper</span><strong id="fluidIntensityValue">100%</strong></div>
+            <input id="fluidIntensityRange" type="range" min="40" max="160" value="100" aria-label="Fluid wallpaper intensity" />
+            <label class="setting-select-row" for="fluidPresetSelect">
+              <span>Color preset</span>
+              <select id="fluidPresetSelect" aria-label="Fluid color preset">
+                <option value="aurora">Aurora</option>
+                <option value="neon">Neon Mix</option>
+                <option value="ocean">Electric Ocean</option>
+                <option value="fire">Liquid Fire</option>
+              </select>
+            </label>
+            <p class="setting-help">Cursor disturbance + beat reaction + viscous flow intensity.</p>
+          </div>
+          <div class="smart-audio-settings">
+            <div class="setting-title">Smart Playback & Audio</div>
+            <div class="setting-subtitle">Crossfade, gapless prefetch, lyrics sizing and sound controls. Safe defaults preserve normal playback.</div>
+            <div class="setting-grid-2">
+              <div class="setting-block">
+                <div class="setting-title-row"><span>Crossfade</span><strong id="crossfadeValue">4s</strong></div>
+                <input id="crossfadeRange" type="range" min="0" max="12" step="1" value="4" aria-label="Crossfade seconds" />
+                <label class="switch-row"><span>Gapless prefetch</span><input id="gaplessToggle" type="checkbox" checked /></label>
+              </div>
+              <div class="setting-block">
+                <label class="setting-select-row" for="audioQualitySelect"><span>Streaming quality</span><select id="audioQualitySelect"><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="data">Data Saver</option></select></label>
+                <label class="switch-row"><span>Volume normalization</span><input id="normalizationToggle" type="checkbox" /></label>
+                <label class="setting-select-row" for="channelModeSelect"><span>Channel mode</span><select id="channelModeSelect"><option value="stereo">Stereo</option><option value="mono">Mono</option></select></label>
+              </div>
+            </div>
+            <div class="youtube-access-card setting-block">
+              <div class="setting-title-row"><span>YouTube Access</span><strong id="youtubeAccessState">Smart anonymous mode</strong></div>
+              <p class="setting-help">DEEP-ECHO pehle normal + alternate YouTube clients try karta hai. Agar YouTube “not a bot” check lagaye tab optional browser-login fallback use kar sakte ho.</p>
+              <div class="youtube-access-controls">
+                <label class="switch-row"><span>Use browser login only when blocked</span><input id="youtubeBrowserAuthToggle" type="checkbox" /></label>
+                <label class="setting-select-row" for="youtubeBrowserSelect"><span>Browser</span><select id="youtubeBrowserSelect"><option value="chrome">Chrome</option><option value="edge">Edge</option><option value="brave">Brave</option><option value="firefox">Firefox</option></select></label>
+              </div>
+              <p class="setting-help">Off by default. When enabled, yt-dlp reads the selected browser session directly; DEEP-ECHO does not save a cookie file. Use only if anonymous YouTube access is blocked.</p>
+            </div>
+            <div class="equalizer-card">
+              <div class="setting-title-row"><span>Equalizer</span><select id="eqPresetSelect" aria-label="Equalizer preset"><option value="flat">Flat</option><option value="bass">Bass Boost</option><option value="vocal">Vocal</option><option value="rock">Rock</option><option value="pop">Pop</option><option value="classical">Classical</option><option value="custom">Custom</option></select></div>
+              <div id="eqBands" class="eq-bands">
+                <label title="Bass · kick, sub-bass and low-end weight"><span class="eq-band-name">Bass</span><em>60 Hz</em><input data-eq-band="0" type="range" min="-10" max="10" value="0" step="1"/><small>0 dB</small></label>
+                <label title="Low Mid · warmth and body"><span class="eq-band-name">Low Mid</span><em>230 Hz</em><input data-eq-band="1" type="range" min="-10" max="10" value="0" step="1"/><small>0 dB</small></label>
+                <label title="Mid · vocals and core instruments"><span class="eq-band-name">Mid</span><em>910 Hz</em><input data-eq-band="2" type="range" min="-10" max="10" value="0" step="1"/><small>0 dB</small></label>
+                <label title="Presence · clarity and attack"><span class="eq-band-name">Presence</span><em>3.6 kHz</em><input data-eq-band="3" type="range" min="-10" max="10" value="0" step="1"/><small>0 dB</small></label>
+                <label title="Treble · sparkle and high-frequency detail"><span class="eq-band-name">Treble</span><em>14 kHz</em><input data-eq-band="4" type="range" min="-10" max="10" value="0" step="1"/><small>0 dB</small></label>
+              </div>
+              <div class="eq-quick-controls" aria-label="Quick tone controls">
+                <label><span>Bass</span><input id="bassQuickRange" type="range" min="-10" max="10" value="0" step="1"/><strong id="bassQuickValue">0 dB</strong></label>
+                <label><span>Mid</span><input id="midQuickRange" type="range" min="-10" max="10" value="0" step="1"/><strong id="midQuickValue">0 dB</strong></label>
+                <label><span>Treble</span><input id="trebleQuickRange" type="range" min="-10" max="10" value="0" step="1"/><strong id="trebleQuickValue">0 dB</strong></label>
+              </div>
+              <p class="eq-band-help">Bass = thump/low-end · Low Mid = warmth · Mid = vocals/body · Presence = clarity · Treble = sparkle/detail</p>
+              <p id="eqStatus" class="setting-help">EQ applies where Chromium's safe audio processing path is supported; otherwise DEEP-ECHO keeps clean passthrough audio.</p>
+            </div>
+            <div class="setting-grid-2">
+              <div class="setting-block">
+                <div class="setting-title-row"><span>Lyrics font size</span><strong id="lyricsFontSizeValue">100%</strong></div>
+                <input id="lyricsFontSizeRange" type="range" min="80" max="150" value="100" aria-label="Lyrics font size"/>
+              </div>
+              <div class="setting-block mini-setting-actions">
+                <button id="openMiniPlayerSettingBtn" class="secondary-btn primary-outline" type="button">Open Mini Player</button>
+                <label class="switch-row"><span>Mini always on top</span><input id="miniAlwaysOnTopToggle" type="checkbox" checked/></label>
+              </div>
+            </div>
+            <div class="immersive-lyrics-app-settings setting-block" id="immersiveLyricsAppSettings">
+              <div class="setting-title-row"><span>Floating Immersive Lyrics</span><strong id="immersiveSettingsWindowState">OFF</strong></div>
+              <p class="setting-help">Right-side full-height overlay. These controls stay synced with the overlay settings.</p>
+              <div class="immersive-settings-actions">
+                <button id="immersiveSettingsOpenBtn" class="secondary-btn primary-outline" type="button">Open Immersive Lyrics</button>
+                <button id="immersiveSettingsResetBtn" class="secondary-btn" type="button">Reset</button>
+              </div>
+              <div class="immersive-settings-grid">
+                <label>
+                  <span class="setting-title-row"><span>Overlay opacity</span><strong id="immersiveSettingsPanelOpacityValue">72%</strong></span>
+                  <input id="immersiveSettingsPanelOpacity" type="range" min="0" max="95" step="1" value="72" aria-label="Immersive Lyrics overlay opacity"/>
+                </label>
+                <label>
+                  <span class="setting-title-row"><span>Lyrics opacity</span><strong id="immersiveSettingsLyricsOpacityValue">100%</strong></span>
+                  <input id="immersiveSettingsLyricsOpacity" type="range" min="35" max="100" step="1" value="100" aria-label="Immersive Lyrics text opacity"/>
+                </label>
+                <label>
+                  <span class="setting-title-row"><span>Lyrics size</span><strong id="immersiveSettingsFontSizeValue">100%</strong></span>
+                  <input id="immersiveSettingsFontSize" type="range" min="80" max="150" step="1" value="100" aria-label="Immersive Lyrics font size"/>
+                </label>
+              </div>
+              <div class="immersive-settings-switches">
+                <label class="switch-row"><span>Theme visualizer</span><input id="immersiveSettingsVisualizerToggle" type="checkbox" checked/></label>
+                <label class="switch-row"><span>Only Lyrics mode</span><input id="immersiveSettingsOnlyLyricsToggle" type="checkbox"/></label>
+                <label class="switch-row"><span>Click-through</span><input id="immersiveSettingsClickThroughToggle" type="checkbox"/></label>
+              </div>
+              <p class="setting-help">Click-through shortcut: Ctrl + Alt + Shift + X. It remains available even when the overlay ignores mouse clicks.</p>
+            </div>
+          </div>
+
+          <div class="v170-experience-settings" id="v170ExperienceSettings">
+            <div class="setting-title">Experience, Visualizer & Performance</div>
+            <div class="setting-subtitle">All visual modes use the same playback clock and analyser. Quality changes rendering cost, not music or lyrics timing.</div>
+            <div class="setting-grid-2">
+              <div class="setting-block">
+                <div class="setting-title-row"><span>Pro Visualizer</span><strong id="v170VisualizerState">Theme Sphere</strong></div>
+                <label class="setting-select-row" for="v170VisualizerMode"><span>Mode</span><select id="v170VisualizerMode"><option value="theme">Theme Sphere</option><option value="spectrum">Spectrum Analyzer</option><option value="waveform">Waveform</option><option value="circular">Circular Spectrum</option><option value="stereo">Stereo L/R Meter</option><option value="vu">VU Meter</option><option value="vocal">Vocal Energy</option></select></label>
+                <label class="setting-select-row" for="v170VisualizerQuality"><span>Render quality</span><select id="v170VisualizerQuality"><option value="eco">Eco</option><option value="balanced" selected>Balanced</option><option value="high">High</option><option value="ultra">Ultra</option></select></label>
+                <div class="v228-visual-polish-controls" aria-label="Visualizer polish controls">
+                  <div class="setting-title-row"><span>Visualizer glow</span><strong id="v228VisualizerBrightnessValue">108%</strong></div>
+                  <input id="v228VisualizerBrightnessRange" type="range" min="85" max="135" step="1" value="108" aria-label="Visualizer brightness"/>
+                  <label class="setting-select-row v228-dim-row" for="v228GlowPreset"><span>Glow preset</span><select id="v228GlowPreset"><option value="soft">Soft</option><option value="balanced" selected>Balanced</option><option value="strong">Strong</option></select></label>
+                  <div class="setting-title-row v228-dim-row"><span>Future lyrics contrast</span><strong id="v228FutureLyricsValue">64%</strong></div>
+                  <input id="v228FutureLyricsRange" type="range" min="45" max="80" step="1" value="64" aria-label="Future lyrics contrast"/>
+                  <div class="setting-title-row v228-dim-row"><span>Stage edge fade</span><strong id="v228LyricsBackdropValue">0%</strong></div>
+                  <input id="v228LyricsBackdropRange" type="range" min="0" max="20" step="1" value="0" aria-label="Optional stage edge fade"/>
+                  <button id="v228ResetVisualBtn" class="secondary-btn" type="button">Reset Visual Settings</button>
+                  <p class="setting-help">Visual-only controls. Playback, downloads, sync engine and lyric timing are not changed.</p>
+                </div>
+                <p class="setting-help">Eco lowers render resolution/FPS only; the same visualizer features remain available.</p>
+              </div>
+              <div class="setting-block">
+                <div class="setting-title-row"><span>Dynamic UI</span><strong id="v170LightingState">Reactive</strong></div>
+                <label class="switch-row"><span>Music-reactive ambient lighting</span><input id="v170LightingToggle" type="checkbox" checked></label>
+                <label class="switch-row"><span>Artwork dynamic accent</span><input id="v170ArtworkAccentToggle" type="checkbox"></label>
+                <label class="switch-row"><span>Auto-apply smart theme per song</span><input id="v170AutoThemeToggle" type="checkbox"></label>
+                <p class="setting-help">Bass drives lower glow, vocals drive center light, and treble adds edge shimmer. No flashing streak lines.</p>
+              </div>
+              <div class="setting-block">
+                <div class="setting-title-row"><span>Audio Enhancements</span><strong id="v170AudioState">Safe parallel path</strong></div>
+                <label class="switch-row"><span>Bypass enhancements</span><input id="v170AudioBypass" type="checkbox"></label>
+                <label class="switch-row"><span>Bass boost</span><input id="v170BassBoost" type="checkbox"></label>
+                <label class="switch-row"><span>Vocal boost</span><input id="v170VocalBoost" type="checkbox"></label>
+                <label> Stereo width <input id="v170StereoWidth" type="range" min="70" max="140" step="5" value="100"><strong id="v170StereoWidthValue">100%</strong></label>
+                <p class="setting-help">EQ, normalization and stereo width stay on a protected wet branch; original playback remains audible.</p>
+              </div>
+              <div class="setting-block">
+                <div class="setting-title-row"><span>Performance Monitor</span><strong id="v170PerfHealth">Ready</strong></div>
+                <div id="v170PerfStats" class="v170-perf-stats"><span>UI FPS —</span><span>Frame —</span><span>Memory —</span><span>Quality Balanced</span></div>
+                <label class="switch-row"><span>Adaptive renderer guard</span><input id="v170AdaptivePerf" type="checkbox" checked></label>
+                <p class="setting-help">If the UI gets overloaded, DEEP-ECHO temporarily lowers canvas resolution before it ever touches playback or lyric timing.</p>
+                <label class="setting-select-row" for="v170SleepTimer"><span>Sleep timer</span><select id="v170SleepTimer"><option value="0">Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option><option value="end">End of song</option></select></label>
+              </div>
+              <div class="setting-block gpu-selector-card" id="gpuSelectorCard">
+                <div class="setting-title-row"><span>Graphics Processor</span><strong id="gpuPreferenceState">Detecting…</strong></div>
+                <p class="setting-help">Game-style GPU preference for DEEP-ECHO. Auto lets Windows choose; selecting a detected adapter requests its power class on the next launch.</p>
+                <label class="setting-select-row" for="gpuPreferenceSelect"><span>Run DEEP-ECHO on</span><select id="gpuPreferenceSelect"><option value="auto">Auto · Windows decides</option></select></label>
+                <div id="gpuDetectedList" class="gpu-detected-list" aria-live="polite"></div>
+                <div class="gpu-selector-actions">
+                  <button id="gpuApplyRestartBtn" class="secondary-btn primary-outline" type="button">Apply + Restart</button>
+                  <button id="gpuRefreshBtn" class="secondary-btn" type="button">Refresh GPUs</button>
+                  <button id="gpuWindowsSettingsBtn" class="secondary-btn" type="button">Windows Graphics Settings</button>
+                </div>
+                <p id="gpuPreferenceHelp" class="setting-help">Windows/driver keeps final control of the physical adapter. The selector is applied before Chromium starts.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="v160-suite" id="v160Suite">
+            <div class="setting-title">DEEP-ECHO Intelligence Suite</div>
+            <div class="setting-subtitle">AI DJ, Flow, AutoMix, analytics, offline intelligence, Windows controls, audio output, Lyrics Pro, download queue, performance and Stability Mode.</div>
+            <div class="v160-grid">
+              <div class="setting-block"><div class="setting-title-row"><span>Personal AI DJ + Flow</span><strong id="v160DjState">Learning your taste</strong></div><div class="setting-inline-actions"><select id="v160DjMode"><option value="discover">Discover</option><option value="chill">Chill</option><option value="energy">Energy</option><option value="focus">Focus</option><option value="late">Late Night</option></select><button id="v160DjStart" class="secondary-btn">Start AI DJ</button></div><label class="switch-row"><span>Endless Flow</span><input id="v160Flow" type="checkbox"></label></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Smart AutoMix</span><strong id="v160MixState">Adaptive</strong></div><label class="switch-row"><span>Energy-aware transitions</span><input id="v160AutoMix" type="checkbox" checked></label><p class="setting-help">Uses gapless prefetch + adaptive crossfade without replacing the playback engine.</p></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Wrapped / Analytics</span><strong id="v160Minutes">0 min</strong></div><div id="v160Stats" class="setting-help">Listening stats are building.</div><button id="v160RefreshStats" class="secondary-btn">Refresh Stats</button></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Smart Offline</span><strong id="v160OfflineCount">0 songs</strong></div><div class="setting-inline-actions"><button id="v160CacheCurrent" class="secondary-btn">Cache Current</button><button id="v160RefreshOffline" class="secondary-btn">Scan Offline</button><button id="v160ClearCache" class="secondary-btn">Clear Cache</button></div><p class="setting-help">Downloaded + smart-cached audio can play without internet. Smart cache is separate from permanent Downloads.</p></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Windows Integration</span><strong>Native</strong></div><label class="switch-row"><span>Media Session metadata</span><input id="v160MediaSession" type="checkbox" checked></label><label class="switch-row"><span>Global shortcuts</span><input id="v160GlobalKeys" type="checkbox" checked></label></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Audio Output Manager</span><strong id="v160OutputState">Default</strong></div><select id="v160OutputSelect"><option value="">System Default</option></select><button id="v160RefreshOutputs" class="secondary-btn">Refresh Devices</button></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Lyrics Pro</span><strong id="v160OffsetLabel">0 ms</strong></div><label>Sync offset <input id="v160LyricsOffset" type="range" min="-3000" max="3000" step="50" value="0"></label><button id="v160OffsetReset" class="secondary-btn">Reset Offset</button><div class="setting-title-row exact-lyrics-setting-state"><span>Exact Lyrics rescue</span><strong>Per song</strong></div><p class="setting-help">Exact Lyrics now has one switch in the Lyrics page. Every new song starts OFF; turn that switch ON only when the base lyrics are missing, wrong or poorly synced. Precision Sync always stays active.</p></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Download Manager</span><strong id="v160DownloadState">Idle</strong></div><button id="v160DownloadCurrent" class="secondary-btn">Queue Current Song</button><div id="v160DownloadQueue" class="setting-help">Queue empty</div></div>
+              <div class="setting-block"><div class="setting-title-row"><span>Performance Mode</span><strong id="v160PerfState">Balanced</strong></div><select id="v160Perf"><option value="quality">Quality</option><option value="balanced" selected>Balanced</option><option value="performance">Performance</option></select><p class="setting-help">Reduces expensive visual effects only in Performance mode.</p></div>
+              <div class="setting-block game-mode-card"><div class="setting-title-row"><span>Game Mode</span><strong id="v163GameState">Ready</strong></div><label class="switch-row"><span>Game Mode</span><input id="v163GameMode" type="checkbox"></label><label class="switch-row"><span>Auto when DEEP-ECHO is in background</span><input id="v163GameAuto" type="checkbox" checked></label><p class="setting-help">Keeps audio/Next working while suspending expensive visuals, animation and early prefetch. Restores the UI automatically when you return.</p></div>
+              <div class="setting-block stability-card"><div class="setting-title-row"><span>Stability Mode</span><strong id="v160StabilityState">Protected</strong></div><label class="switch-row"><span>Playback watchdog + safe recovery</span><input id="v160Stability" type="checkbox" checked></label><label>Sleep timer <select id="v160Sleep"><option value="0">Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option><option value="end">End of song</option></select></label><p class="setting-help">Feature failures are isolated so playback is not intentionally stopped.</p></div>
+            </div>
+          </div>
+
+          <div class="power-tools-settings" id="powerToolsSettings">
+            <div class="setting-title">Built-in Power Tools</div>
+            <div class="setting-subtitle">Spicetify-style utility features, built directly into DEEP-ECHO.</div>
+            <div class="power-tools-grid">
+              <div class="setting-block" id="autoSkipSettings">
+                <div class="setting-title-row"><span>Auto Skip Rules</span><strong id="autoSkipStatus">Off</strong></div>
+                <div class="skip-rule-grid">
+                  <label><input type="checkbox" data-skip-rule="live"> Live / Concert</label><label><input type="checkbox" data-skip-rule="remix"> Remix</label>
+                  <label><input type="checkbox" data-skip-rule="instrumental"> Instrumental</label><label><input type="checkbox" data-skip-rule="karaoke"> Karaoke</label>
+                  <label><input type="checkbox" data-skip-rule="clean"> Clean / Censored</label><label><input type="checkbox" data-skip-rule="slowed"> Slowed / Reverb</label>
+                  <label><input type="checkbox" data-skip-rule="nightcore"> Nightcore / Sped Up</label><label><input type="checkbox" data-skip-rule="cover"> Cover</label>
+                </div>
+                <p class="setting-help">Only enabled rules are applied. DEEP-ECHO safely moves to the next allowed track.</p>
+              </div>
+              <div class="setting-block" id="trackPreferenceSettings">
+                <div class="setting-title-row"><span>Track Version Preference</span><strong>Smart source</strong></div>
+                <label class="switch-row"><span>Resolve a better version when needed</span><input id="autoVersionPreferenceToggle" type="checkbox" checked></label>
+                <label class="setting-select-row" for="versionPreferenceSelect"><span>Prefer</span><select id="versionPreferenceSelect"><option value="official-audio">Official Audio</option><option value="music-video">Official Music Video</option><option value="topic">Topic upload</option><option value="lyrics">Lyrics video</option><option value="any">Any best match</option></select></label>
+                <p class="setting-help">Used for repair and when a clicked result is clearly a less-preferred version.</p>
+              </div>
+              <div class="setting-block" id="blacklistSettings">
+                <div class="setting-title-row"><span>Never Play / Blacklist</span><strong id="blacklistCount">0 blocked</strong></div>
+                <div class="setting-inline-actions"><input id="blockedArtistInput" class="inline-tool-input" type="text" placeholder="Artist/channel name"><button id="addBlockedArtistBtn" class="secondary-btn" type="button">Block Artist</button><button id="blockCurrentSongBtn" class="secondary-btn" type="button">Block Current Song</button></div>
+                <div id="blacklistChips" class="blacklist-chips"></div>
+              </div>
+            </div>
+            <div class="setting-block shortcut-settings" id="shortcutSettings">
+              <div class="setting-title-row"><span>Global Keyboard Shortcuts</span><strong id="shortcutStatus">Not registered</strong></div>
+              <div class="shortcut-grid">
+                <label>Play / Pause<input data-shortcut-action="playPause" value="Ctrl+Alt+Space"></label><label>Floating Click-through<input data-shortcut-action="floatingClickThrough" value="Ctrl+Alt+X"></label>
+                <label>Next<input data-shortcut-action="next" value="Ctrl+Alt+Right"></label>
+                <label>Previous<input data-shortcut-action="previous" value="Ctrl+Alt+Left"></label><label>Like<input data-shortcut-action="like" value="Ctrl+Alt+L"></label>
+                <label>Lyrics<input data-shortcut-action="lyrics" value="Ctrl+Alt+Y"></label><label>Mini Player<input data-shortcut-action="mini" value="Ctrl+Alt+M"></label>
+                <label>Fullscreen<input data-shortcut-action="fullscreen" value="Ctrl+Alt+F"></label><label>Volume +<input data-shortcut-action="volumeUp" value="Ctrl+Alt+Up"></label>
+                <label>Volume -<input data-shortcut-action="volumeDown" value="Ctrl+Alt+Down"></label><label>Mute<input data-shortcut-action="mute" value="Ctrl+Alt+0"></label>
+              </div>
+              <div class="setting-inline-actions"><button id="saveGlobalShortcutsBtn" class="secondary-btn primary-outline" type="button">Save Shortcuts</button><button id="resetGlobalShortcutsBtn" class="secondary-btn" type="button">Reset Defaults</button></div>
+              <p class="setting-help">Electron accelerator format, e.g. Ctrl+Alt+Space. Conflicts are reported instead of silently replacing another app.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="player-bar">
+      <button id="playerCollapseBtn" class="player-collapse-btn" type="button" aria-label="Hide player" aria-expanded="true" title="Hide player">⌄</button>
+      <button id="lyricsSyncBtn" class="lyrics-sync-float hidden" type="button" aria-label="Return lyrics to the currently playing line">Sync to video</button>
+      <div id="playLoadingWrap" class="play-loading hidden" role="status" aria-live="polite">
+        <span id="playLoadingText">Connecting...</span>
+        <div id="playLoadingTrack" class="play-loading-track" role="progressbar" aria-label="Audio loading" aria-valuemin="0" aria-valuemax="100"><div id="playLoadingFill"></div></div>
+      </div>
+      <img id="nowThumb" class="now-thumb" src="assets/dinecho-logo.png" alt="" />
+      <div class="now-info">
+        <div id="nowTitle" class="now-title">Nothing playing</div>
+        <div id="nowChannel" class="now-channel"></div>
+        <button id="themeSuggestionBtn" class="theme-suggestion-btn hidden" type="button" title="Apply suggested theme">✨ Theme suggestion</button>
+        <div id="downloadProgressWrap" class="download-progress-wrap hidden">
+          <div class="download-progress-track"><div id="downloadProgressFill" class="download-progress-fill"></div></div>
+          <span id="downloadProgressText">0%</span>
+        </div>
+      </div>
+      <audio id="audioPlayer"></audio>
+      <div class="controls">
+        <button id="shuffleBtn" class="icon-button player-mode-btn" aria-label="Shuffle" title="Shuffle"></button>
+        <button id="back10Btn" class="icon-button skip-time-btn" aria-label="Back 10 seconds" title="Back 10 seconds">-10</button>
+        <button id="previousBtn" class="icon-button" aria-label="Previous" title="Previous"></button>
+        <button id="playPauseBtn" class="icon-button" aria-label="Play" title="Play">▶</button>
+        <button id="nextBtn" class="icon-button" aria-label="Next" title="Next"></button>
+        <button id="forward10Btn" class="icon-button skip-time-btn skip-forward-btn" aria-label="Forward 10 seconds" title="Forward 10 seconds">+10</button>
+        <button id="loopBtn" class="icon-button player-mode-btn" aria-label="Loop Off" title="Loop Off"></button>
+        <button id="queueToggleBtn" class="icon-button player-mode-btn" aria-label="Queue" title="Queue"></button>
+        <button id="playerRadioBtn" class="icon-button player-mode-btn" aria-label="Start song radio" title="Start Radio">R</button>
+        <button id="miniPlayerBtn" class="icon-button player-mode-btn" aria-label="Mini Player" title="Mini Player">▱</button>
+        <button id="immersiveBtn" class="icon-button player-mode-btn" aria-label="Immersive Player" title="Immersive Player">⛶</button>
+        <button id="playerLikeBtn" class="player-action-btn icon-button" title="Like song"><span class="action-icon"></span><span class="sr-only">Like</span></button>
+        <button id="playerDownloadBtn" class="player-action-btn icon-button" title="Download song"><span class="action-icon"></span><span class="sr-only">Download</span></button>
+      </div>
+      <div class="progress-wrap">
+        <span id="curTime">0:00</span>
+        <div class="v170-seek-stage"><canvas id="v170PlayerWaveform" width="600" height="36" aria-hidden="true"></canvas><input id="seekBar" type="range" min="0" max="100" value="0" /></div>
+        <span id="durTime">0:00</span>
+      </div>
+    </footer>
+  </div>
+</div>
+
+
+<div id="queuePanel" class="queue-panel hidden" aria-label="Play queue">
+  <div class="queue-head">
+    <div><strong>Queue</strong><span id="queueSummary">Nothing queued</span></div>
+    <div class="queue-head-actions"><button id="saveQueueBtn" class="secondary-btn">Save as Playlist</button><button id="clearAfterCurrentBtn" class="secondary-btn" aria-pressed="false">Clear after current: Off</button><button id="clearQueueBtn" class="secondary-btn">Clear</button><button id="queueCloseBtn" class="queue-close" aria-label="Close queue">×</button></div>
+  </div>
+  <div id="queueList" class="queue-list"></div>
+</div>
+
+<div id="createPlaylistModal" class="modal hidden">
+  <div class="modal-card glass-dialog">
+    <div class="modal-title">Create Playlist</div>
+    <div class="modal-subtitle">Playlist ka naam likho.</div>
+    <input id="createPlaylistInput" class="modal-input" type="text" maxlength="50" placeholder="Playlist name" />
+    <div id="createPlaylistError" class="form-error hidden"></div>
+    <div class="modal-actions">
+      <button id="createPlaylistCancel" class="secondary-btn">Cancel</button>
+      <button id="createPlaylistSave" class="hero-btn">Create Playlist</button>
+    </div>
+  </div>
+</div>
+
+<div id="playlistChooserModal" class="modal hidden">
+  <div class="modal-card glass-dialog playlist-chooser-card">
+    <div class="modal-title">Add to Playlist</div>
+    <div id="playlistChooserSong" class="modal-subtitle">Choose where this song should go.</div>
+    <div id="playlistChoiceList" class="playlist-choice-list"></div>
+    <div class="modal-actions split-actions">
+      <button id="playlistChooserCreate" class="secondary-btn">New Playlist</button>
+      <button id="playlistChooserCancel" class="secondary-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="playlistToolsModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-card glass-dialog playlist-tools-card">
+    <div class="modal-title">Playlist Tools</div><div id="playlistToolsSubtitle" class="modal-subtitle">Cleanup, snapshots and broken-source repair.</div>
+    <div class="playlist-tool-section"><div class="tool-section-head"><strong>Snapshot / Backup</strong><button id="createPlaylistSnapshotBtn" class="secondary-btn" type="button">Create Snapshot</button></div><div class="setting-inline-actions"><select id="playlistSnapshotSelect" aria-label="Playlist snapshots"></select><button id="restorePlaylistSnapshotBtn" class="secondary-btn" type="button">Restore</button><button id="deletePlaylistSnapshotBtn" class="secondary-btn danger" type="button">Delete Snapshot</button></div></div>
+    <div class="playlist-tool-section"><strong>Cleanup</strong><div class="playlist-tools-grid"><button id="findDuplicatesBtn" class="secondary-btn" type="button">Find Duplicates</button><button id="removeDuplicatesBtn" class="secondary-btn" type="button">Remove Duplicates</button><button class="secondary-btn" data-playlist-sort="artist" type="button">Sort Artist</button><button class="secondary-btn" data-playlist-sort="title" type="button">Sort Title</button><button class="secondary-btn" data-playlist-sort="duration" type="button">Sort Duration</button><button class="secondary-btn" data-playlist-sort="reverse" type="button">Reverse</button><button class="secondary-btn" data-playlist-sort="shuffle" type="button">Permanent Shuffle</button></div><div class="setting-inline-actions"><label class="tool-number-label">Remove shorter than <input id="playlistMinSeconds" type="number" min="0" max="600" value="30"> sec</label><button id="removeShortTracksBtn" class="secondary-btn" type="button">Remove Short</button></div></div>
+    <div class="playlist-tool-section"><div class="tool-section-head"><strong>Broken Song Repair</strong><span id="playlistRepairStatus" class="setting-help inline">Not scanned</span></div><div class="setting-inline-actions"><button id="scanBrokenSongsBtn" class="secondary-btn" type="button">Scan Broken</button><button id="repairBrokenSongsBtn" class="secondary-btn primary-outline" type="button">Repair Broken Sources</button></div><p class="setting-help">Only confirmed unavailable/private/deleted sources count as broken. Bot-check/network errors are never deleted.</p></div>
+    <div class="modal-actions"><button id="playlistToolsCloseBtn" class="secondary-btn" type="button">Close</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<div id="artistSearchModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-title">Search Artist</div>
+    <div class="modal-subtitle">Artist ka naam likho, phir uske best songs dikhenge.</div>
+    <input id="artistModalInput" class="modal-input" type="text" placeholder="Artist name" />
+    <div class="modal-actions">
+      <button id="artistModalCancel" class="secondary-btn">Cancel</button>
+      <button id="artistModalSearch" class="hero-btn">Search Artist</button>
+    </div>
+  </div>
+</div>
+
+
+<div id="immersivePlayer" class="immersive-player hidden" aria-hidden="true">
+  <div id="immersiveBackdrop" class="immersive-backdrop"></div>
+  <div class="immersive-theme-fx" aria-hidden="true"></div>
+  <button id="immersiveCloseBtn" class="immersive-close" type="button" aria-label="Close immersive player">×</button>
+  <button id="immersiveLyricsToggleBtn" class="immersive-lyrics-toggle immersive-lyrics-toggle-float" type="button" aria-pressed="true">Hide Lyrics</button>
+  <div id="immersiveShell" class="immersive-shell">
+    <section class="immersive-content" aria-label="Now playing">
+      <div class="immersive-visual-stage">
+        <canvas id="immersiveVisualizerCanvas" width="760" height="760" aria-hidden="true"></canvas>
+        <img id="immersiveArt" src="assets/dinecho-logo.png" alt=""/>
+        <video id="immersiveVideo" class="immersive-song-video" muted playsinline preload="metadata" aria-label="Current song video"></video>
+      </div>
+      <div class="immersive-meta"><p>NOW PLAYING</p><h1 id="immersiveTitle">Nothing playing</h1><h3 id="immersiveArtist"></h3></div>
+      <div class="immersive-controls">
+        <button id="immersiveBack10Btn" class="immersive-seek" type="button" aria-label="Back 10 seconds" title="Back 10 seconds">↶<small>10</small></button>
+        <button id="immersivePrevBtn" type="button" aria-label="Previous song">◀</button>
+        <button id="immersivePlayBtn" class="immersive-play" type="button" aria-label="Play or pause">▶</button>
+        <button id="immersiveNextBtn" type="button" aria-label="Next song">▶</button>
+        <button id="immersiveForward10Btn" class="immersive-seek" type="button" aria-label="Forward 10 seconds" title="Forward 10 seconds">↷<small>10</small></button>
+        <button id="immersiveLikeBtn" class="immersive-like" type="button" aria-label="Like song" title="Like song">♡</button>
+        <button id="immersiveVideoToggleBtn" class="immersive-video-toggle" type="button" aria-pressed="false" title="Show the current song video inside Immersive Player">See While Playing</button>
+      </div>
+      <div class="immersive-progress">
+        <span id="immersiveCur">0:00</span>
+        <div id="immersiveProgressTrack" class="immersive-progress-track" role="slider" aria-label="Song progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"><i id="immersiveProgressFill"></i></div>
+        <span id="immersiveDur">0:00</span>
+      </div>
+    </section>
+    <aside id="immersiveLyricsPanel" class="immersive-lyrics-panel" aria-label="Immersive lyrics">
+      <div class="immersive-lyrics-head">
+        <div><span class="immersive-lyrics-kicker">THEMED LYRICS</span><strong>Lyrics</strong></div>
+      </div>
+      <div id="immersiveLyricsBody" class="immersive-lyrics-body lyrics-scroll-panel"><p class="hint">Play a song to see its lyrics here.</p></div>
+    </aside>
+  </div>
+</div>
+<div id="likeCelebrationLayer" class="like-celebration-layer" aria-hidden="true"></div>
+
+<div id="commandPalette" class="command-palette hidden" aria-hidden="true">
+  <div class="command-card">
+    <div class="command-head"><strong>Command Palette</strong><kbd>Ctrl K</kbd></div>
+    <input id="commandInput" type="text" placeholder="Type a command or: play Arijit Singh" autocomplete="off"/>
+    <div id="commandResults" class="command-results"></div>
+    <div class="command-hint">Enter to run · ↑↓ to choose · Esc to close</div>
+  </div>
+</div>
+
+<div id="dinechoLiveCursor" class="dinecho-live-cursor" data-theme="golden" data-state="normal" aria-hidden="true">
+  <div id="dinechoLiveCursorArt" class="dinecho-live-cursor-art"></div>
+</div>
+
+<script src="effects.js"></script>
+<script src="../lib/lyrics-timeline.js"></script>
+<script src="renderer.js"></script>
+<script src="v150-tools.js"></script>
+<script src="v160-suite.js"></script>
+<script src="v169-lyrics-presentation.js"></script>
+<script src="v170-experience.js"></script>
+<script src="v200-core.js"></script>
+<script src="v200.js"></script>
+<script src="v220-home-search.js"></script>
+<script src="v228-visual-polish.js"></script>
+<script src="v236-discovery-shelves.js"></script>
+<script src="v238-smart-autoplay.js"></script>
+<script src="v2310-smart-system.js"></script>
+<script src="v2313-repair-artist.js"></script>
+<script src="v2314-session-mixes-stats.js"></script>
+<script src="v2315-global-playlist-open.js"></script>
+<script src="v253-pro-suite.js"></script>
+<script src="v255-lyrics-recovery.js"></script>
+<script src="v273-red-nebula-performance.js"></script>
+<script src="home-discovery.js"></script>
+<script src="feel-happy.js"></script>
+<script src="material-controls.js"></script>
+</body>
+</html>

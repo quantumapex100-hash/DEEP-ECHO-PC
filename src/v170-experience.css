@@ -1,0 +1,159 @@
+/* Deepeccho v1.7.0 — clean reactive lyrics + adaptive experience layer.
+   Presentation-only overrides: playback and lyric clock remain in renderer.js. */
+:root{
+  --v170-energy:0;--v170-vocal:0;--v170-bass:0;--v170-treble:0;--v170-hit:0;
+  --v170-art-accent:var(--gold);--v170-art-accent-soft:var(--shadow);
+}
+
+/* Remove the laggy "boxed / line popup" treatment while retaining readable glow. */
+.lyric-line.current,
+body.lyrics-theme-fx .lyric-line.current,
+body.lyrics-theme-fx[data-theme] .lyric-line.current{
+  background:none!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  border-color:transparent!important;
+  transform:translate3d(10px,var(--lyric-bounce-y,0px),0) scale(var(--lyric-bounce-scale,1.03))!important;
+  transform-origin:left center;
+  transition:color .14s ease,opacity .14s ease,text-shadow .12s linear,filter .12s linear,transform .075s linear!important;
+  will-change:transform,filter,text-shadow;
+}
+.lyric-line.current::before{display:none!important;content:none!important}
+.lyric-line{contain:paint style}
+.lyric-line:not(.current){transform:none!important}
+
+/* Immersive lyrics get the same music-driven bounce, not a separate clock. */
+.immersive-lyrics-body .lyric-line.current,
+body.lyrics-theme-fx[data-theme] .immersive-lyrics-body .lyric-line.current{
+  background:none!important;box-shadow:none!important;
+  transform:translate3d(0,var(--lyric-bounce-y,0px),0) scale(var(--lyric-bounce-scale,1))!important;
+  transition:opacity .14s ease,color .14s ease,text-shadow .12s linear,filter .12s linear,transform .075s linear!important;
+}
+
+/* Theme individuality stays in typography/glow; no sweeping line/streak overlays. */
+body.lyrics-theme-fx[data-theme="purple"] .lyric-line.current,
+body.lyrics-theme-fx[data-theme="toxic"] .lyric-line.current,
+body.lyrics-theme-fx[data-theme="blood"] .lyric-line.current,
+body.lyrics-theme-fx[data-theme="rgb"] .lyric-line.current,
+body.lyrics-theme-fx[data-theme="space"] .lyric-line.current{background:none!important}
+
+/* Karaoke focus mode. */
+body.v170-karaoke #lyricsView .lyrics-header-card{opacity:.96}
+body.v170-karaoke #lyricsView .lyrics-search{opacity:.24;transition:opacity .2s ease}
+body.v170-karaoke #lyricsView .lyrics-search:hover{opacity:1}
+body.v170-karaoke #lyricsView .lyrics-content-stage{min-height:calc(100vh - 245px)}
+body.v170-karaoke #lyricsView .lyrics-ambient-visualizer{opacity:.38!important;filter:blur(.2px) saturate(.85)!important}
+body.v170-karaoke #lyricsView .lyrics-body{max-width:min(1040px,94vw);margin-inline:auto;text-align:center}
+body.v170-karaoke #lyricsView .lyric-line{transform-origin:center!important;font-size:calc(var(--lyrics-line-size,26px) * 1.12);margin-inline:auto;padding:10px 16px;opacity:.28}
+body.v170-karaoke #lyricsView .lyric-line.current{transform:translate3d(0,var(--lyric-bounce-y,0px),0) scale(calc(var(--lyric-bounce-scale,1) + .035))!important;opacity:1}
+body.v170-karaoke #lyricsView .lyric-line.past{opacity:.16}
+
+/* Music-reactive ambient lighting. One composited layer, no flashing streaks. */
+#v170MusicLighting{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;opacity:0;transition:opacity .35s ease;contain:strict;mix-blend-mode:screen}
+body.v170-lighting-on #v170MusicLighting{opacity:calc(.10 + var(--v170-energy)*.18 + var(--v170-vocal)*.10)}
+#v170MusicLighting::before,#v170MusicLighting::after{content:"";position:absolute;inset:-18%;pointer-events:none;will-change:transform,opacity;transform:translateZ(0)}
+#v170MusicLighting::before{
+  background:
+    radial-gradient(ellipse at 50% 68%,color-mix(in srgb,var(--v170-art-accent) 30%,transparent) 0,transparent 58%),
+    radial-gradient(ellipse at 22% 86%,color-mix(in srgb,var(--gold) 22%,transparent) 0,transparent 46%),
+    radial-gradient(ellipse at 80% 86%,color-mix(in srgb,var(--gold-bright) 13%,transparent) 0,transparent 44%);
+  transform:scale(calc(1 + var(--v170-bass)*.055)) translateY(calc(var(--v170-bass)*-1.4%));
+  filter:blur(calc(24px + var(--v170-bass)*22px));
+}
+#v170MusicLighting::after{
+  background:radial-gradient(circle at 50% 46%,color-mix(in srgb,var(--v170-art-accent) 25%,transparent) 0,transparent 38%);
+  opacity:calc(.35 + var(--v170-vocal)*.45 + var(--v170-treble)*.15);
+  transform:scale(calc(.96 + var(--v170-vocal)*.08));
+  filter:blur(calc(18px + var(--v170-treble)*18px));
+}
+/* v2.2.7 overlay positioning regression fix.
+   Only the app shell belongs in document flow. Queue/modal/immersive/command surfaces
+   keep their base fixed positioning; v1.7.0 accidentally changed all of them to relative. */
+.app{position:relative;z-index:1}
+.queue-panel{position:fixed;z-index:70}
+.modal{position:fixed}
+.immersive-player{position:fixed;z-index:10020}
+.command-palette{position:fixed;z-index:11000}
+
+/* v1.7.2 cursor isolation: the theme cursor must stay viewport-fixed above every app layer. */
+.dinecho-live-cursor{position:fixed!important;z-index:2147483647!important;pointer-events:none!important}
+
+/* Artwork-derived accent is scoped; theme variables themselves are never overwritten. */
+body.v170-art-accent .player-bar{box-shadow:0 -10px 30px var(--shadow),0 -8px 36px color-mix(in srgb,var(--v170-art-accent) 10%,transparent)}
+body.v170-art-accent .lyric-line.current{color:color-mix(in srgb,var(--v170-art-accent) 76%,white);text-shadow:0 0 14px color-mix(in srgb,var(--v170-art-accent) 52%,transparent),0 0 30px var(--shadow)}
+body.v170-art-accent .immersive-meta p,body.v170-art-accent .immersive-lyrics-kicker{color:color-mix(in srgb,var(--v170-art-accent) 82%,white)}
+
+/* Pro visualizer controls and health panel. */
+.v170-experience-settings{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
+.v170-experience-settings input[type="range"]{width:100%;accent-color:var(--gold)}
+.v170-perf-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:10px 0}
+.v170-perf-stats span{font-size:11px;color:var(--text-dim);padding:7px 8px;border-radius:8px;background:color-mix(in srgb,var(--panel-3) 72%,transparent);border:1px solid color-mix(in srgb,var(--border) 70%,transparent)}
+
+/* Now Playing waveform sits below the native seek thumb; input remains fully interactive. */
+.v170-seek-stage{position:relative;flex:1;min-width:120px;height:30px;display:flex;align-items:center}
+.v170-seek-stage #seekBar{position:relative;z-index:2;width:100%;background:transparent}
+#v170PlayerWaveform{position:absolute;inset:3px 0 3px 0;width:100%;height:24px;z-index:1;opacity:.42;pointer-events:none;filter:drop-shadow(0 0 5px color-mix(in srgb,var(--gold) 24%,transparent))}
+
+/* Album art parallax is a transform-only effect. */
+#nowThumb,#immersiveArt{transform:perspective(900px) rotateX(var(--v170-art-rx,0deg)) rotateY(var(--v170-art-ry,0deg)) translateZ(0);transition:transform .16s ease;will-change:transform}
+
+/* Cleaner active karaoke words; no boxes/lines. */
+.karaoke-word{position:relative;transition:color .09s linear,text-shadow .09s linear,opacity .09s linear}
+.karaoke-word.lit{text-shadow:0 0 calc(9px + var(--lyric-vocal,0)*8px) color-mix(in srgb,var(--gold) 58%,transparent)}
+
+/* Keep UI smooth in constrained render budgets without removing features. */
+body.v170-render-eco .lyrics-ambient-visualizer,body.v170-render-eco #v170PlayerWaveform{filter:none!important}
+body.v170-adaptive-pressure *{scroll-behavior:auto!important}
+/* Preserve the themed canvas and lighting; avoid large changing software filters under pressure. */
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView .lyrics-ambient-visualizer{filter:none!important}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting::before{filter:blur(24px)}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting::after{filter:blur(18px)}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) .sidebar,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) .topbar,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) .player-bar{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView .lyric-line.current,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView .lyric-line.current::after{filter:none!important}
+
+/* The canvas has its own theme drop-shadows in v228/v273, independent of
+   the parent filter above. Re-blurring a changing 800px bitmap twice per frame
+   is expensive in software graphics. The renderer already paints a themed aura.
+   Keep the user's brightness control and use that aura when adapting. */
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView #lyricsVisualizerCanvas,
+body.v170-render-eco #lyricsView #lyricsVisualizerCanvas{
+  filter:var(--v170-adaptive-canvas-filter,none)!important;
+}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting::before,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting::after{filter:none!important}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170MusicLighting{mix-blend-mode:normal}
+body.v170-adaptive-pressure #v170PlayerWaveform,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #v170PlayerWaveform{filter:none!important}
+body.v170-adaptive-pressure .sidebar,
+body.v170-adaptive-pressure .topbar,
+body.v170-adaptive-pressure .player-bar{
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+}
+/* Cards and header controls can also re-blur the moving particle backdrop.
+   Keep their themed fills/borders; skip only the backdrop sampling under load. */
+body.v170-adaptive-pressure .app *,
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) .app *{
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+}
+body:is(.lyrics-render-constrained,.lyrics-render-efficient) #lyricsView .lyrics-visualizer-core{
+  animation:v170CoreBreath 2.9s ease-in-out infinite;
+}
+@keyframes v170CoreBreath{
+  0%,100%{transform:scale(.985)}
+  50%{transform:scale(1.045)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .lyric-line.current,.immersive-lyrics-body .lyric-line.current{transform:none!important;transition:none!important}
+  #nowThumb,#immersiveArt{transform:none!important}
+}
+
+/* v2.2.2 exact Word by Word mode. Safe fallback keeps ordinary line sync when exact timings are missing. */
+body.word-by-word-off .karaoke-word{color:inherit!important;text-shadow:inherit!important;opacity:inherit!important}
+.karaoke-word.word-current{color:var(--gold-bright);text-shadow:0 0 calc(12px + var(--lyric-vocal,0)*10px) color-mix(in srgb,var(--gold) 78%,transparent),0 0 30px color-mix(in srgb,var(--gold-bright) 24%,transparent);opacity:1}
+body:not(.word-by-word-off) .lyric-line[data-word-timing="exact"] .karaoke-word:not(.lit){opacity:.72}
+.lyric-line.current[data-word-timing="exact"] .karaoke-word.word-current{filter:brightness(1.12)}

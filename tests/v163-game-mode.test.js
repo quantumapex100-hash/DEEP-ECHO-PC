@@ -1,0 +1,5 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');
+const root=path.resolve(__dirname,'..');const read=f=>fs.readFileSync(path.join(root,f),'utf8');
+test('v1.6.3 Game Mode UI and state are wired',()=>{const html=read('src/index.html'),js=read('src/v160-suite.js');for(const id of ['v163GameState','v163GameMode','v163GameAuto'])assert.match(html,new RegExp(`id="${id}"`));assert.match(js,/__deepecchoGameMode/);assert.match(js,/Auto when DEEP-ECHO is in background|gameAuto/);});
+test('Game Mode suspends expensive rendering without disabling playback',()=>{const r=read('src/renderer.js'),e=read('src/effects.js');assert.match(r,/window\.__deepecchoGameMode[\s\S]*1000/);assert.match(r,/d-c>24/);assert.match(e,/window\.__deepecchoGameMode\) return true/);assert.match(read('src/v160-suite.js'),/Audio remains untouched\. Only visual\/UI workload is reduced/);});
+test('Game Mode CSS pauses animated surfaces',()=>{const css=read('src/style.css');assert.match(css,/body\.deepeccho-game-mode/);assert.match(css,/animation-play-state:paused/);assert.match(css,/backdrop-filter:none/);});
