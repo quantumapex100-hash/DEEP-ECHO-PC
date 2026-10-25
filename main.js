@@ -19,6 +19,7 @@ const { rankCompatibleCandidates, buildCompatibleQueries, isUsableSyncedLyrics, 
 const { makeEntry:makeCanonicalLyricsEntry, readMatch:readCanonicalLyricsMatch, canonicalKey:canonicalLyricsKey } = require('./lib/lyrics-canonical-cache');
 const { runYtDlpSmart: runYtDlpSmartBase, runWithYtDlpContext, isBotChallenge, isAbort, resetYouTubeBackoff } = require('./lib/ytdlp-smart');
 const selectFastRuntime = require('./lib/fast-ytdlp-runtime').createRuntimeSelector();
+<<<<<<< HEAD
 const {createNativeAudioResolver,createPlaybackFastLane}=require('./lib/native-audio-resolver');
 const nativeAudioResolver=createNativeAudioResolver({log:(stage,data)=>playbackLog(stage,data)});
 const playbackFastLane=createPlaybackFastLane(nativeAudioResolver,
@@ -30,6 +31,11 @@ function runYtDlpSmart(executable, args, options = {}) {
 }
 app.whenReady().then(()=>{if(process.env.DEEPECHO_DISABLE_NATIVE_AUDIO!=='1')void nativeAudioResolver.warm().catch(()=>{});});
 app.on('will-quit',()=>nativeAudioResolver.close());
+=======
+function runYtDlpSmart(executable, args, options = {}) {
+  return runYtDlpSmartBase(selectFastRuntime(executable, options), args, options);
+}
+>>>>>>> e83dfe38a7e9fe2598fd59562f05c0996b93b00c
 const { isPlaylistLike, explicitPlaylistSignal, extractTracklist, choosePlayableCandidate, playlistSourceUrl, mapPlaylistEntry } = require('./lib/playlist-content');
 const {createPlaybackRelay,expiry:streamExpiry}=require('./lib/playback-relay');
 const {findPreparedPlayback}=require('./lib/prepared-playback-cache');

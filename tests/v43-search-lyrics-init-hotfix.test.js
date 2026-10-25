@@ -45,7 +45,11 @@ test('V43 preserves premium Red Nebulae palette and visualizer implementation', 
 
 test('V43 keeps protected playback, lyrics and Smart Autoplay engines byte-identical', () => {
   // Main accepts the 17 October availability-aware playback client and prepared-audio reuse; protected lyric hashes below remain unchanged.
+<<<<<<< HEAD
   assert.equal(sha('main.js'), 'f17f9153b612843079e1170357c9e353269f11176ac21ff94d7bc903d48796f9');
+=======
+  assert.equal(sha('main.js'), '8368d26c12596563249ebfb465afe8b0c1ff0df08753be98cc35b014de0cf7d9');
+>>>>>>> e83dfe38a7e9fe2598fd59562f05c0996b93b00c
   assert.equal(sha('preload.js'), '43624209119d865ccd2fcca44dda7b1eb49357933301d9fda655858eed979e83');
   assert.equal(sha('lib/exact-lyrics.js'), 'f84bd963a4b156707c4ba637ec3b01d19177fce5fa5f04853c2514c2bec9c6f4');
   assert.equal(sha('lib/youtube-captions.js'), 'dc89d203b626f2dfa5b9a0e147268b21672a3ab53aa2a3e190e2fa26676e3339');
