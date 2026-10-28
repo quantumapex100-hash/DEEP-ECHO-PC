@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: deep-echo-release-2.6.7
@@ -17,7 +17,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 35
     env:
-      GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
       RELEASE_REPO: quantumapex100-hash/DEEP-ECHO-PC
       RELEASE_TITLE: DEEP-ECHO 2.6.7
 
