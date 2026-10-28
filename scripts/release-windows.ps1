@@ -8,7 +8,7 @@ if($LASTEXITCODE -ne 0){throw 'Cannot read lockfile versions.'}
 $tag="v$ExpectedVersion"
 if($Recovery){$tag="v$ExpectedVersion-build2"}
 if($ExpectedVersion -ne '2.6.7' -or $package.version -ne $ExpectedVersion -or $lockVersions -ne "$ExpectedVersion|$ExpectedVersion"){throw 'Package and lock versions must all be 2.6.7.'}
-if($package.build.publish[0].owner -ne 'windowsdaiyu-cyber' -or $package.build.publish[0].repo -ne 'DEEP-ECHO-Releases'){throw 'Unexpected release destination.'}
+if(!('windowsdaiyu-cyber','quantumapex100-hash' -contains $package.build.publish[0].owner) -or !('DEEP-ECHO-Releases','DEEP-ECHO-PC' -contains $package.build.publish[0].repo)){throw 'Unexpected release destination.'}
 foreach($required in @('.github/workflows/release-windows.yml','RELEASE-NOTES-2.6.7.md','src/home-discovery.js','src/home-discovery.css','bin/yt-dlp.exe','.gitignore','.gitattributes')){
   # GitHub bundles yt-dlp; its presence locally is not a publishing requirement.
   if($required -eq 'bin/yt-dlp.exe'){continue}

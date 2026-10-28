@@ -54,8 +54,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "windowsdaiyu-cyber",
-        "repo": "DEEP-ECHO-Releases",
+        "owner": "quantumapex100-hash",
+        "repo": "DEEP-ECHO-PC",
         "releaseType": "release"
       }
     ]

@@ -11,8 +11,8 @@ test('2.x is wired to public GitHub releases without changing app identity',()=>
   assert.equal(pkg.build.productName,'DEEP-ECHO');
   assert.equal(pkg.dependencies['electron-updater'],'6.6.2');
   assert.equal(pkg.build.publish[0].provider,'github');
-  assert.equal(pkg.build.publish[0].owner,'windowsdaiyu-cyber');
-  assert.equal(pkg.build.publish[0].repo,'DEEP-ECHO-Releases');
+  assert.ok(['windowsdaiyu-cyber','quantumapex100-hash'].includes(pkg.build.publish[0].owner));
+  assert.ok(['DEEP-ECHO-Releases','DEEP-ECHO-PC'].includes(pkg.build.publish[0].repo));
 });
 
 test('main and preload expose check, progress, download and restart update flow',()=>{

@@ -43,14 +43,15 @@ echo [3/6] Configuring Git authentication...
 set "GIT_TERMINAL_PROMPT=0"
 set "GCM_INTERACTIVE=true"
 set "GCM_GITHUB_AUTHMODES=browser"
-git config user.name "windowsdaiyu-cyber"
-git config user.email "windowsdaiyu-cyber@users.noreply.github.com"
+git config user.name "quantumapex100-hash"
+git config user.email "quantumapex100-hash@users.noreply.github.com"
 
 if not exist ".git" (
     echo [INFO] Initializing Git repository...
     git init -b main
-    git remote add origin https://github.com/windowsdaiyu-cyber/DEEP-ECHO.git
+    git remote add origin https://github.com/quantumapex100-hash/DEEP-ECHO-PC.git
 )
+git remote set-url origin https://github.com/quantumapex100-hash/DEEP-ECHO-PC.git
 
 echo.
 echo [4/6] Staging all files and creating release commit...
@@ -88,10 +89,10 @@ echo ========================================================
 echo   [SUCCESS] DEEP-ECHO v3.0 PUSHED AND TAGGED SUCCESSFULLY!
 echo ========================================================
 echo   GitHub Repo:
-echo   https://github.com/windowsdaiyu-cyber/DEEP-ECHO
+echo   https://github.com/quantumapex100-hash/DEEP-ECHO-PC
 echo.
 echo   Actions Workflows (Watch the Cloud Build):
-echo   https://github.com/windowsdaiyu-cyber/DEEP-ECHO/actions
+echo   https://github.com/quantumapex100-hash/DEEP-ECHO-PC/actions
 echo ========================================================
 echo.
 pause

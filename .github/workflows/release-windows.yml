@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 35
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-      RELEASE_REPO: windowsdaiyu-cyber/DEEP-ECHO-Releases
+      RELEASE_REPO: quantumapex100-hash/DEEP-ECHO-PC
       RELEASE_TITLE: DEEP-ECHO 2.6.7
 
     steps:
