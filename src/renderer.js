@@ -115,6 +115,10 @@
       setTimeout(() => requestAnimationFrame(tick), 1000);
       return;
     }
+    if (document.hidden) {
+      setTimeout(() => requestAnimationFrame(tick), 250);
+      return;
+    }
     const theme = themeName();
     if (theme !== lastTheme) {
       lastTheme = theme;
@@ -3815,6 +3819,27 @@ window.echoAPI.onLyricsStatus?.((status) => {
   }
 });
 
+function smartCleanLyricsLookupTitle(title, artist = '') {
+  let clean = String(title || '')
+    .replace(/\[([^\]]*)\]|\(([^)]*)\)/g, (match, a, b) =>
+      /official|lyric|video|audio|visuali[sz]er|\bhd\b|\b4k\b/i.test(a || b) ? ' ' : match)
+    .replace(/\b(official music video|official video|official audio|lyric video|lyrics?|lyrical video|full song|video song|audio song)\b/gi, ' ')
+    .trim();
+  const pipe = clean.split(/\s*[|｜/／]\s*/).map(p => p.trim()).filter(Boolean);
+  if (pipe.length > 1) {
+    const latin = pipe.find(p => /[A-Za-z]{2,}/.test(p));
+    if (latin) clean = latin;
+    else clean = pipe[0];
+  }
+  if (artist) {
+    const escaped = artist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    clean = clean.replace(new RegExp('\\s+(?:by|-)\\s+' + escaped + '\\b', 'i'), '');
+  }
+  clean = clean.replace(/\s+by\s+[A-Za-z0-9_ -]+$/i, '');
+  clean = clean.replace(/^[\s-–—:]+|[\s-–—:]+$/g, '').replace(/\s+/g, ' ').trim();
+  return clean || title;
+}
+
 async function loadLyricsFor(song, keepFields = false) {
   const request = ++lyricsRequest;
   lyricsQuery = song; lyricLines = []; activeLyric = -1;
@@ -3825,15 +3850,22 @@ async function loadLyricsFor(song, keepFields = false) {
   if (!keepFields) {
     const clean = song.title.replace(/\[(.*?)\]|\((?:official|lyrics|lyric|lyrical|audio|video)[^)]*\)/gi, '').trim();
     const parts = clean.split(/\s+[-–—]\s+/);
-    lyricsArtistInput.value = parts.length > 1 ? parts.shift() : (song.channel || '').replace(/VEVO$| - Topic$/gi, '');
-    lyricsTitleInput.value = parts.length ? parts.join(' - ') : clean.split(/\s*[|｜]\s*/)[0].trim();
+    if (parts.length > 1) {
+      lyricsArtistInput.value = parts.shift().trim();
+      lyricsTitleInput.value = smartCleanLyricsLookupTitle(parts.join(' - '), lyricsArtistInput.value);
+    } else {
+      lyricsArtistInput.value = (song.channel || '').replace(/VEVO$| - Topic$/gi, '').trim();
+      lyricsTitleInput.value = smartCleanLyricsLookupTitle(clean, lyricsArtistInput.value);
+    }
   }
   lyricsBody.innerHTML = '<p class="hint">Lyrics load ho rahi hain...</p>';
   try {
-    const res = await window.echoAPI.getLyrics({
+    const lookupTitle = keepFields ? (lyricsTitleInput?.value?.trim() || song.title) : smartCleanLyricsLookupTitle(song.title, song.channel);
+    const lookupChannel = keepFields ? (lyricsArtistInput?.value?.trim() || song.channel) : (song.channel || '').replace(/VEVO$| - Topic$/gi, '').trim();
+    let res = await window.echoAPI.getLyrics({
       id: song.id,
-      title: song.title,
-      channel: song.channel,
+      title: lookupTitle,
+      channel: lookupChannel,
       duration: song.duration,
       url: song.url || '',
       streamUrl: song.streamUrl || '',
@@ -3841,6 +3873,20 @@ async function loadLyricsFor(song, keepFields = false) {
       manual: !!keepFields,
       exactLyricsEnabled
     });
+    if (!res?.syncedLyrics && lookupTitle !== song.title && !keepFields) {
+      const rawRes = await window.echoAPI.getLyrics({
+        id: song.id,
+        title: song.title,
+        channel: song.channel,
+        duration: song.duration,
+        url: song.url || '',
+        streamUrl: song.streamUrl || '',
+        filepath: song.filepath || '',
+        manual: false,
+        exactLyricsEnabled
+      }).catch(() => null);
+      if (rawRes?.syncedLyrics || (!res?.lyrics && rawRes?.lyrics)) res = rawRes;
+    }
     if (request !== lyricsRequest || res?.cancelled) return;
     // A lyrics response is valid only for the track that is still authoritative in the player.
     // This extra identity gate protects against late provider/AI responses after very fast Next/
@@ -3853,6 +3899,7 @@ async function loadLyricsFor(song, keepFields = false) {
       lyricsBody.innerHTML = lyricLines.map((line, i) => `<p class="lyric-line" data-line="${i}">${escapeHtml(line.text) || '♪'}</p>`).join('');
       syncLyrics(true);
       startLyricTicker();
+      if (typeof smartPrepareKaraokeWords === 'function') smartPrepareKaraokeWords();
     } else if (res?.lyrics) {
       lyricsBody.innerHTML = res.lyrics.split(/\r?\n/).map(line => `<p class="lyric-line plain">${escapeHtml(line) || '&nbsp;'}</p>`).join('');
       // Plain lyrics appear immediately. Timing is upgraded in the background from the
@@ -4640,9 +4687,52 @@ async function smartRefreshRecommendations(force=false){
   try{
     const queries=[];
     seeds.slice(0,3).forEach((seed,idx)=>{queries.push({seed,idx,q:`${seed.title} ${seed.channel||''} similar songs official audio`});if(idx<2&&seed.channel)queries.push({seed,idx,q:`${seed.channel} best songs official audio`});});
-    const settled=await Promise.allSettled(queries.slice(0,5).map(x=>window.echoAPI.search(x.q)));
+    const radioJobs=[seeds[0]].map(seed=>{
+      if(typeof window.echoAPI?.getSmartAutoplayCandidates==='function'&&seed?.id){
+        return window.echoAPI.getSmartAutoplayCandidates(seed,18).catch(()=>null);
+      }
+      return Promise.resolve(null);
+    });
+    const [settled,radioSettled]=await Promise.all([
+      Promise.allSettled(queries.slice(0,5).map(x=>window.echoAPI.search(x.q))),
+      Promise.allSettled(radioJobs)
+    ]);
     const scored=new Map(), bySeed=new Map();
+    radioSettled.forEach((res,rIdx)=>{
+      if(res.status!=='fulfilled'||!res.value||!Array.isArray(res.value.items))return;
+      const seed=seeds[rIdx];if(!seed?.id)return;
+      const seedList=bySeed.get(seed.id)||[];
+      const isRadio=res.value.source==='youtube-radio';
+      res.value.items.slice(0,24).forEach((raw,pos)=>{
+        const song=queueSong(raw);if(!song?.id||seeds.some(s=>s.id===song.id))return;
+        seedList.push(song);
+        const current=scored.get(song.id)||{song,score:0};
+        current.score+=(28-pos)*.42+(isRadio?7.2:3.5)+smartSimilarityScore(song,seeds);
+        scored.set(song.id,current);
+      });
+      bySeed.set(seed.id,smartUniqueSongs(seedList).slice(0,18));
+    });
     settled.forEach((result,qIndex)=>{if(result.status!=='fulfilled'||!Array.isArray(result.value))return;const meta=queries[qIndex];const seedList=bySeed.get(meta.seed.id)||[];result.value.slice(0,22).forEach((raw,pos)=>{const song=queueSong(raw);if(!song?.id||seeds.some(s=>s.id===song.id))return;seedList.push(song);const current=scored.get(song.id)||{song,score:0};current.score+=(24-pos)*.12+(5-qIndex)*.32+smartSimilarityScore(song,seeds);scored.set(song.id,current);});bySeed.set(meta.seed.id,smartUniqueSongs(seedList).slice(0,18));});
+    if(scored.size===0){
+      let offlinePool=[];
+      try{
+        const liked=typeof getLikedSongs==='function'?getLikedSongs():[];
+        const lib=(typeof window.echoAPI?.getLibrary==='function'?await window.echoAPI.getLibrary():[])||[];
+        offlinePool=smartUniqueSongs([...liked,...lib]);
+      }catch(_){}
+      offlinePool.forEach((raw,pos)=>{
+        const song=queueSong(raw);if(!song?.id||seeds.some(s=>s.id===song.id))return;
+        const current=scored.get(song.id)||{song,score:0};
+        current.score+=(24-Math.min(24,pos))*.15+smartSimilarityScore(song,seeds);
+        scored.set(song.id,current);
+        const leadSeed=seeds[0];
+        if(leadSeed?.id){
+          const seedList=bySeed.get(leadSeed.id)||[];
+          seedList.push(song);
+          bySeed.set(leadSeed.id,smartUniqueSongs(seedList).slice(0,18));
+        }
+      });
+    }
     const songs=smartDiverseRecommendationList([...scored.values()].sort((a,b)=>b.score-a.score).map(x=>x.song),36);
     const payload={profileKey,updatedAt:Date.now(),seeds:seeds.map(normalizeSong),songs,bySeed:seeds.map(s=>({seed:normalizeSong(s),songs:bySeed.get(s.id)||[]}))};
     setStored(STORAGE.recommendations,payload);registerSongs(songs);

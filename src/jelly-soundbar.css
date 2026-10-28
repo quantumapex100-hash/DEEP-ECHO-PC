@@ -1,0 +1,82 @@
+/* ==========================================================================
+   DEEP-ECHO Tactile Jelly Master Sound Bar Styles
+   High-Fidelity Elastic Glass Ribbon Volume Controller
+   ========================================================================== */
+
+.home-head-row {
+  position: relative;
+  min-height: 64px;
+  margin-bottom: 2px;
+}
+
+.home-greet-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.jelly-soundbar-slot {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  background: rgba(14, 18, 28, 0.78);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7), 0 0 16px rgba(245, 158, 11, 0.15);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  user-select: none;
+  -webkit-user-select: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.18s ease;
+  z-index: 10;
+}
+
+.jelly-soundbar-slot:hover {
+  transform: translateY(-1px);
+}
+
+.jelly-vol-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: #fbbf24;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease;
+}
+
+.jelly-vol-icon:hover {
+  transform: scale(1.18);
+}
+
+.jelly-groove-wrap {
+  position: relative;
+  width: 200px;
+  height: 30px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.jelly-canvas {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 220px;
+  height: 50px;
+  pointer-events: none;
+}
+
+.jelly-pct-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fbbf24;
+  font-family: monospace;
+  letter-spacing: 0.5px;
+  min-width: 34px;
+  text-align: right;
+  transition: color 0.2s ease;
+}

@@ -1,0 +1,49 @@
+/* =========================================================================
+   DEEP-ECHO · Parallax Motion Engine (Search View Only)
+   ─────────────────────────────────────────────────────
+   Targeted EXCLUSIVELY to Search view (#searchView).
+   Home and Settings remain 100% standard/untouched.
+   ========================================================================= */
+
+#searchView .view-title-row,
+#searchView .search-smart-bar,
+#searchView .search220-discovery,
+#searchView .search236-landing-hero,
+#searchView .search236-shelf-section {
+  will-change: transform, opacity;
+  transform-style: preserve-3d;
+}
+
+#searchView .deepecho-horizontal-shelf > .song-card,
+#searchView .deepecho-horizontal-shelf > .playlist-card,
+#searchView .discovery-carousel > .song-card,
+#searchView .discovery-carousel > .playlist-card {
+  will-change: transform, filter, opacity;
+  transition: border-color 0.28s ease, box-shadow 0.28s ease;
+}
+
+#searchView .deepecho-horizontal-shelf > .song-card.parallax-focus,
+#searchView .deepecho-horizontal-shelf > .playlist-card.parallax-focus,
+#searchView .discovery-carousel > .song-card.parallax-focus,
+#searchView .discovery-carousel > .playlist-card.parallax-focus {
+  border-color: color-mix(in srgb, var(--gold-bright, #ffd27a) 70%, var(--border, #3a2c14)) !important;
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--gold, #e8b559) 18%, transparent),
+              0 0 14px color-mix(in srgb, var(--gold, #e8b559) 10%, transparent) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #searchView .view-title-row,
+  #searchView .search-smart-bar,
+  #searchView .search220-discovery,
+  #searchView .search236-landing-hero,
+  #searchView .search236-shelf-section,
+  #searchView .deepecho-horizontal-shelf > .song-card,
+  #searchView .deepecho-horizontal-shelf > .playlist-card,
+  #searchView .discovery-carousel > .song-card,
+  #searchView .discovery-carousel > .playlist-card {
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+  }
+}

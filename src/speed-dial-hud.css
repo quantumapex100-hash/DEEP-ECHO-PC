@@ -1,0 +1,150 @@
+/* ==========================================================================
+   DEEP-ECHO Speed Dial Telemetry HUD (FPS, CPU, GPU, Temps)
+   Dynamic Theme-Adaptive Glass Monitoring Capsule
+   ========================================================================== */
+
+.speed-dial-hud {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 5;
+}
+
+.hud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(14, 18, 28, 0.76);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(245, 158, 11, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.15s ease;
+  cursor: default;
+}
+
+.hud-chip:hover {
+  transform: translateY(-1px);
+}
+
+.hud-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+  animation: hudPulse 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes hudPulse {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  100% { transform: scale(1.25); opacity: 1; }
+}
+
+.hud-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase;
+}
+
+.hud-val {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fbbf24;
+  letter-spacing: 0.4px;
+}
+
+/* ==========================================================================
+   THEME ADAPTATION
+   ========================================================================== */
+
+/* Golden Theme (Default) */
+body[data-theme="golden"] .hud-chip {
+  border-color: rgba(251, 191, 36, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(245, 158, 11, 0.18);
+}
+body[data-theme="golden"] .hud-dot { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+body[data-theme="golden"] .hud-val { color: #fbbf24; }
+
+/* Blood Red Theme */
+body[data-theme="blood"] .hud-chip {
+  border-color: rgba(244, 63, 94, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(244, 63, 94, 0.22);
+}
+body[data-theme="blood"] .hud-dot { background: #f43f5e; box-shadow: 0 0 8px #f43f5e; }
+body[data-theme="blood"] .hud-val { color: #fb7185; }
+
+/* Space & Dark Themes (Electric Cyan / Ice Blue) */
+body[data-theme="space"] .hud-chip,
+body[data-theme="dark"] .hud-chip {
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(6, 182, 212, 0.22);
+}
+body[data-theme="space"] .hud-dot,
+body[data-theme="dark"] .hud-dot { background: #06b6d4; box-shadow: 0 0 8px #06b6d4; }
+body[data-theme="space"] .hud-val,
+body[data-theme="dark"] .hud-val { color: #38bdf8; }
+
+/* Toxic Emerald Theme */
+body[data-theme="toxic"] .hud-chip {
+  border-color: rgba(74, 222, 128, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(34, 197, 94, 0.22);
+}
+body[data-theme="toxic"] .hud-dot { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+body[data-theme="toxic"] .hud-val { color: #4ade80; }
+
+/* Purple Amethyst Theme */
+body[data-theme="purple"] .hud-chip {
+  border-color: rgba(192, 132, 252, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(168, 85, 247, 0.22);
+}
+body[data-theme="purple"] .hud-dot { background: #a855f7; box-shadow: 0 0 8px #a855f7; }
+body[data-theme="purple"] .hud-val { color: #c084fc; }
+
+/* Silver & Light Themes (Platinum Sheen) */
+body[data-theme="silver"] .hud-chip,
+body[data-theme="light"] .hud-chip {
+  border-color: rgba(203, 213, 225, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(226, 232, 240, 0.2);
+}
+body[data-theme="silver"] .hud-dot,
+body[data-theme="light"] .hud-dot { background: #94a3b8; box-shadow: 0 0 8px #94a3b8; }
+body[data-theme="silver"] .hud-val,
+body[data-theme="light"] .hud-val { color: #e2e8f0; }
+
+/* Red Nebulae Theme */
+body[data-theme="nebula"] .hud-chip {
+  border-color: rgba(244, 114, 182, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(236, 72, 153, 0.22);
+}
+body[data-theme="nebula"] .hud-dot { background: #ec4899; box-shadow: 0 0 8px #ec4899; }
+body[data-theme="nebula"] .hud-val { color: #f472b6; }
+
+/* Fluids Theme */
+body[data-theme="fluids"] .hud-chip {
+  border-color: rgba(167, 139, 250, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(139, 92, 246, 0.22);
+}
+body[data-theme="fluids"] .hud-dot { background: #8b5cf6; box-shadow: 0 0 8px #8b5cf6; }
+body[data-theme="fluids"] .hud-val { color: #a78bfa; }
+
+/* Responsive adjustments */
+@media (max-width: 950px) {
+  .speed-dial-hud {
+    width: 100%;
+    margin-top: 8px;
+    margin-left: 0;
+  }
+}

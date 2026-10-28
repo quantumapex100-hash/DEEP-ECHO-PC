@@ -59,7 +59,15 @@
     try {
       const cached = typeof smartRecommendationCache === 'function' ? smartRecommendationCache() : { songs: [] };
       const ranked = typeof smartRecommendationProfile === 'function' ? smartRecommendationProfile().map(x => x.song) : [];
-      return uniqueSongs([...(cached?.songs || []), ...ranked, ...likedSongs(), ...recentSongs()]);
+      const recent = recentSongs(), liked = likedSongs(), discovery = cached?.songs || [];
+      const blended = [], maxLen = Math.max(recent.length, liked.length, discovery.length, ranked.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (recent[i]) blended.push(recent[i]);
+        if (discovery[i]) blended.push(discovery[i]);
+        if (liked[i]) blended.push(liked[i]);
+        if (ranked[i]) blended.push(ranked[i]);
+      }
+      return uniqueSongs([...blended, ...discovery, ...ranked, ...liked, ...recent]);
     } catch (_) { return uniqueSongs([...likedSongs(), ...recentSongs()]); }
   };
   const homeCardSnapshots = new WeakMap();

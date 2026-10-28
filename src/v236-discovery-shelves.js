@@ -476,6 +476,14 @@
     const seeds = tasteSongs236();
     const seed = seeds.length ? seeds[count % seeds.length] : null;
     if (!seed?.title) return [];
+    try {
+      if (typeof window.echoAPI?.getSmartAutoplayCandidates === 'function' && seed?.id) {
+        const radio = await window.echoAPI.getSmartAutoplayCandidates(seed, 20);
+        if (Array.isArray(radio?.items) && radio.items.length >= 4) {
+          return uniqueSongs236(radio.items).filter(song => song?.id !== seed.id).slice(0, 18);
+        }
+      }
+    } catch (_) {}
     const flavor = /because/i.test(hint) ? 'similar songs' : /quick|made|for you/i.test(hint) ? 'songs like' : 'recommended songs';
     const query = `${seed.title} ${seed.channel || ''} ${flavor} official audio`.trim();
     try {
