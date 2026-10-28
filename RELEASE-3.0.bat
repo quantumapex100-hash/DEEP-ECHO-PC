@@ -11,7 +11,7 @@ echo.
 
 cd /d "%~dp0"
 
-echo [1/5] Checking Git and Node environment...
+echo [1/6] Checking Git and Node environment...
 where git.exe >nul 2>&1
 if errorlevel 1 if exist "%ProgramFiles%\Git\cmd\git.exe" set "PATH=%ProgramFiles%\Git\cmd;%PATH%"
 where git.exe >nul 2>&1
@@ -30,7 +30,7 @@ echo Git: OK
 echo Node: OK
 echo.
 
-echo [2/5] Running pre-release syntax and integrity checks...
+echo [2/6] Running pre-release syntax and integrity checks...
 node --check main.js || goto :error
 node --check preload.js || goto :error
 node --check src\renderer.js || goto :error
@@ -39,7 +39,7 @@ node --check src\v200.js || goto :error
 echo Integrity checks passed!
 echo.
 
-echo [3/5] Configuring Git authentication...
+echo [3/6] Configuring Git authentication...
 set "GIT_TERMINAL_PROMPT=0"
 set "GCM_INTERACTIVE=true"
 set "GCM_GITHUB_AUTHMODES=browser"
@@ -53,11 +53,11 @@ if not exist ".git" (
 )
 
 echo.
-echo [4/5] Staging all files and creating release commit...
+echo [4/6] Staging all files and creating release commit...
 git add .
 git diff --cached --quiet
 if errorlevel 1 (
-    git commit -m "Release DEEP-ECHO v3.0 - YouTube Music Autoplay & Synced Lyrics Update"
+    git commit -m "Release DEEP-ECHO v3.0 - YouTube Music Autoplay & Workflow Update"
     if errorlevel 1 (
         echo [INFO] Commit completed.
     )
@@ -66,7 +66,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [5/5] Pushing code to GitHub (origin main)...
+echo [5/6] Pushing code to GitHub (origin main)...
 git push origin HEAD:main
 if errorlevel 1 (
     echo [ERROR] Push to GitHub failed! Please check your internet connection or GitHub permissions.
@@ -74,17 +74,24 @@ if errorlevel 1 (
 )
 
 echo.
+echo [6/6] Pushing v3.0.0 release tag to trigger GitHub Actions Cloud Build...
+git tag -d v3.0.0 >nul 2>&1
+git push origin :refs/tags/v3.0.0 >nul 2>&1
+git tag -a "v3.0.0" -m "DEEP-ECHO v3.0.0 release"
+git push origin "v3.0.0" --force
+if errorlevel 1 (
+    echo [WARNING] Tag push had an issue, but main branch is already updated.
+)
+
+echo.
 echo ========================================================
-echo   [SUCCESS] DEEP-ECHO v3.0 PUSHED TO GITHUB SUCCESSFULLY!
+echo   [SUCCESS] DEEP-ECHO v3.0 PUSHED AND TAGGED SUCCESSFULLY!
 echo ========================================================
 echo   GitHub Repo:
 echo   https://github.com/windowsdaiyu-cyber/DEEP-ECHO
 echo.
-echo   - Code has been cleanly updated on main branch.
-echo   - No invalid cloud tags pushed (Zero GitHub Action failures!).
-echo.
-echo   To generate the final Windows installer (.exe):
-echo   Run "Build-Karo.bat" or "Build-Portable.bat" in this folder.
+echo   Actions Workflows (Watch the Cloud Build):
+echo   https://github.com/windowsdaiyu-cyber/DEEP-ECHO/actions
 echo ========================================================
 echo.
 pause

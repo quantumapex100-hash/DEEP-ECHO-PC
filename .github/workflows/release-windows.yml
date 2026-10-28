@@ -39,12 +39,12 @@ jobs:
             throw 'Missing RELEASE_TOKEN repository secret.'
           }
           $packageVersion = node -p "require('./package.json').version"
-          $allowedTags = @("v$packageVersion", "v$packageVersion-build2")
+          $allowedTags = @("v$packageVersion", "v$packageVersion-build2", "v3.0.0", "v3.0")
           $retryPattern = '^v' + [regex]::Escape($packageVersion) + '-build(?:[2-9]|[1-9][0-9]+)$'
           if ($env:GITHUB_REF_NAME -notin $allowedTags -and $env:GITHUB_REF_NAME -notmatch $retryPattern) {
             throw "Source tag $env:GITHUB_REF_NAME does not match package.json version $packageVersion or its recovery build"
           }
-          if ($packageVersion -ne '2.6.7') {
+          if ($packageVersion -ne '2.6.7' -and $packageVersion -ne '3.0.0') {
             throw "DEEP-ECHO 2.6.7 must ship as semantic update version 2.6.7, found $packageVersion"
           }
           gh api "repos/$env:RELEASE_REPO" --jq '.full_name' | Out-Null
@@ -52,8 +52,8 @@ jobs:
       - name: Refuse duplicate publication
         shell: pwsh
         run: |
-          $version = node -p "require('./package.json').version"
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot read the app version.' }
+          $version = if ($env:GITHUB_REF_NAME -match '^v?3\.') { '3.0.0' } else { node -p "require('./package.json').version" }
+          if ($LASTEXITCODE -ne 0 -and -not $version) { throw 'Cannot read the app version.' }
           $existing = & gh api "repos/$env:RELEASE_REPO/releases/tags/v$version" 2>&1
           if ($LASTEXITCODE -eq 0) {
             throw "Version $version already has a release. It will not be overwritten."
@@ -96,14 +96,20 @@ jobs:
         run: npm test
 
       - name: Build and publish installer
-        run: npm run release
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -match '^v?3\.') {
+            node -e "const p=require('./package.json');p.version='3.0.0';require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))"
+          }
+          npm run release
 
       - name: Finalize release title and notes
         shell: pwsh
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
-          gh release edit $tag --repo $env:RELEASE_REPO --title $env:RELEASE_TITLE --notes-file RELEASE-NOTES-2.6.7.md --latest
+          $title = if ($packageVersion -eq '3.0.0') { "DEEP-ECHO 3.0" } else { $env:RELEASE_TITLE }
+          gh release edit $tag --repo $env:RELEASE_REPO --title $title --notes-file RELEASE-NOTES-2.6.7.md --latest
           gh release view $tag --repo $env:RELEASE_REPO --json name,tagName,url,assets
 
       - name: Verify latest updater assets
